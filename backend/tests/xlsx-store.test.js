@@ -144,9 +144,9 @@ test('writes serialised through the job service land correctly on the real file'
   const b = await svc.claimNext();
   assert.equal(b.to, 'solo@beta.io');
   assert.deepEqual(b.cc, []);
-  const c = await svc.claimNext(); // Gamma has no subject/message: marked failed, then queue is empty
+  const c = await svc.claimNext(); // Gamma has no subject/message yet: skipped untouched, queue is empty
   assert.equal(c, null);
-  assert.equal((await reopen(file)).getCell('J5').value, 'failed');
+  assert.equal((await reopen(file)).getCell('J5').value, null);
   await svc.report(a.id, 'sent', 'Verified: compose window closed');
   const ws = await reopen(file);
   assert.equal(ws.getCell('J2').value, 'sent');

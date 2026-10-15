@@ -53,20 +53,22 @@ export function parseJobId(id) {
  * Map a sheet row to a job. First valid address is TO, the rest are CC.
  * Any malformed address, or a missing subject/body, makes the row invalid so we never send to a
  * partial or silently altered recipient list.
- * @returns {{ok:true, job:object} | {ok:false, error:string}}
+ * `incomplete` errors (nothing to send yet: no address, empty subject or message) mean the row is
+ * still being drafted and should be skipped, not failed; other errors are real data problems.
+ * @returns {{ok:true, job:object} | {ok:false, error:string, incomplete?:boolean}}
  */
 export function rowToJob(r, { maxCc = 20 } = {}) {
   const { emails, invalid } = parseEmailList(r.emails);
   if (invalid.length) return { ok: false, error: `Invalid email address in column: ${invalid.slice(0, 3).join(', ')}` };
-  if (!emails.length) return { ok: false, error: 'No email address found.' };
+  if (!emails.length) return { ok: false, error: 'No email address found.', incomplete: true };
   if (emails.length - 1 > maxCc) return { ok: false, error: `Too many CC recipients (${emails.length - 1} > ${maxCc}).` };
 
   const subject = String(r.subject ?? '').replace(/\s*[\r\n]+\s*/g, ' ').trim();
-  if (!subject) return { ok: false, error: 'Subject is empty.' };
+  if (!subject) return { ok: false, error: 'Subject is empty.', incomplete: true };
   if (subject.length > MAX_SUBJECT) return { ok: false, error: 'Subject is too long.' };
 
   const body = String(r.body ?? '').replace(/\r\n?/g, '\n').replace(/\s+$/, '');
-  if (!body.trim()) return { ok: false, error: 'Message content is empty.' };
+  if (!body.trim()) return { ok: false, error: 'Message content is empty.', incomplete: true };
   if (body.length > MAX_BODY) return { ok: false, error: 'Message content is too long.' };
 
   return {

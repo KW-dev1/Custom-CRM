@@ -49,6 +49,7 @@ test('rowToJob: invalid rows give a useful error', () => {
     const r = rowToJob(row({ emails: 'a@x.com', ...o }), { maxCc: 1 });
     assert.equal(r.ok, false, JSON.stringify(o));
     assert.match(r.error, re);
+    assert.equal(Boolean(r.incomplete), /No email|Subject|content/.test(r.error), 'empty fields are "incomplete", bad data is not');
   }
 });
 test('job id encodes row + content hash; editing the row changes the id', () => {

@@ -3,6 +3,8 @@
 // Status column lifecycle:  (empty) --claim--> pending --extension--> sent | failed | needs_review
 // Safety rules:
 //  * Only rows whose status cell is EMPTY are ever claimed; anything else is left alone.
+//  * Rows with no address / subject / message yet are skipped untouched (still being drafted);
+//    rows with malformed data (e.g. a broken email address) are marked `failed` with a reason.
 //  * Claiming writes `pending` BEFORE the job is returned; a pending row is never auto-retried
 //    (clear the cell by hand to requeue, after checking Outlook's Sent Items if unsure).
 //  * Final statuses are terminal: a repeat of the same status is idempotent, a different one is a conflict.
@@ -64,9 +66,11 @@ export function createJobService({ sheet, cfg, now = Date.now, log = () => {} })
         }
         const rows = await sheet.readRows();
         let invalid = 0;
+        let skipped = 0;
         for (const r of rows) {
           if (canonical(r.status) !== 'empty' || !hasContent(r)) continue;
           const mapped = rowToJob(r, { maxCc: cfg.maxCcRecipients });
+          if (!mapped.ok && mapped.incomplete) { skipped += 1; continue; } // still being drafted: leave untouched
           if (!mapped.ok) {
             if (invalid >= MAX_INVALID_PER_CLAIM) break;
             invalid += 1;
@@ -79,6 +83,7 @@ export function createJobService({ sheet, cfg, now = Date.now, log = () => {} })
           log('info', 'claimed', { row: r.rowNumber, jobId: mapped.job.id, cc: mapped.job.cc.length });
           return mapped.job;
         }
+        if (skipped) log('info', 'rows_incomplete', { count: skipped });
         return null;
       });
     },

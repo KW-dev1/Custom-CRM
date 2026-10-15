@@ -44,13 +44,29 @@ test('concurrent claims are serialised and get different rows', async () => {
   const jobs = await Promise.all([svc.claimNext(), svc.claimNext(), svc.claimNext()]);
   assert.equal(new Set(jobs.map((j) => j.id)).size, 3);
 });
-test('invalid rows are marked failed (with reason) and the next valid row is claimed', async () => {
-  const { sheet, svc } = setup([{ emails: 'bad@', subject: 'S', body: 'B' }, { emails: 'a@x.com', subject: '', body: 'B' }, lead(3)]);
+test('malformed rows are marked failed (with reason) and the next valid row is claimed', async () => {
+  const { sheet, svc } = setup([{ emails: 'bad@', subject: 'S', body: 'B' }, { emails: 'a@x.com, oops@@x', subject: 'S', body: 'B' }, lead(3)]);
   const job = await svc.claimNext();
   assert.equal(job.metadata.row, 4);
   assert.equal(sheet.rows[0].status, 'failed');
   assert.match(sheet.rows[0].note, /Invalid email/);
   assert.equal(sheet.rows[1].status, 'failed');
+});
+test('rows still being drafted (no address, subject or message) are skipped and left untouched', async () => {
+  const { sheet, svc } = setup([
+    { emails: 'a@x.com', subject: '', body: '' }, { emails: 'a@x.com', subject: 'S', body: ' ' },
+    { emails: '', subject: 'S', body: 'B' }, lead(4),
+  ]);
+  const job = await svc.claimNext();
+  assert.equal(job.metadata.row, 5);
+  assert.deepEqual(sheet.rows.slice(0, 3).map((r) => r.status), ['', '', '']);
+  assert.equal(sheet.writes.length, 1, 'only the pending marker was written');
+});
+test('once the draft is completed the skipped row is picked up on a later claim', async () => {
+  const { sheet, svc } = setup([{ emails: 'a@x.com', subject: '', body: '' }]);
+  assert.equal(await svc.claimNext(), null);
+  sheet.rows[0].subject = 'Now written'; sheet.rows[0].body = 'Body';
+  assert.equal((await svc.claimNext()).subject, 'Now written');
 });
 test('minimum claim interval is enforced with Retry-After', async () => {
   const { svc, clock } = setup([lead(1), lead(2)], { MIN_CLAIM_INTERVAL_SEC: '300' });
