@@ -72,6 +72,7 @@ function showErrors(errors) {
 $('form').addEventListener('submit', async (ev) => {
   ev.preventDefault();
   const msg = $('saveMsg');
+  msg.textContent = '';
   const { raw, statusError } = readForm();
   const current = await store.getSettings();
   const next = normalizeSettings({ ...raw, enabled: current.enabled });
@@ -82,6 +83,7 @@ $('form').addEventListener('submit', async (ev) => {
 
   // Ask only for the configured backend origin (no broad host access).
   const origin = backendOriginPattern(next.apiBaseUrl);
+  msg.textContent = 'Checking permission to contact the backend…';
   try {
     if (!(await chrome.permissions.contains({ origins: [origin] })) && !(await chrome.permissions.request({ origins: [origin] }))) {
       msg.textContent = 'Permission to contact the backend was not granted.';
