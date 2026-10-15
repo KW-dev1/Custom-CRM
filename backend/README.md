@@ -1,11 +1,36 @@
-# Backend: email jobs from a Google Sheet
+# Backend: email jobs from a local Excel file (or Google Sheet)
 
-Small Node.js (Express) API that turns rows of a Google Sheet into email jobs for the Chrome
-extension and writes the results back to the sheet.
+Small Node.js (Express) API that turns rows of a spreadsheet into email jobs for the Chrome
+extension and writes the results back to the status column. The default data source is a **local
+`.xlsx` file** on the same computer; Google Sheets is an optional alternative (`DATA_SOURCE=google`).
 
-> **Status:** unit and HTTP tests pass against an **in-memory sheet** and mocked Google HTTP. The
-> Google OAuth and Sheets calls have **not been run against live Google** (the build environment
-> cannot reach it). Do the [first-run checklist](#first-run-checklist) before relying on it.
+> **Status:** the Excel source has been exercised end to end (real `.xlsx` files, including a copy of your
+> `contact_out.xlsx`, through the real HTTP API). The **Google** source has only been tested against mocked
+> HTTP, never live Google. Neither has been run against real Outlook yet.
+
+## Quick start (local Excel file)
+
+```bash
+npm install
+mkdir -p backend/data && cp /path/to/contact_out.xlsx backend/data/     # kept out of git
+cp backend/.env.example backend/.env   # set API_KEYS (long random string); XLSX_PATH is already ./data/contact_out.xlsx
+npm run start:backend                  # listens on http://127.0.0.1:3000
+```
+
+In the extension popup use **Backend API base URL** `http://localhost:3000` and the same key. Fill in
+columns **H (Subject)** and **I (Message)** for each row you want sent, save and **close Excel**.
+
+### Working with the Excel file
+
+- **Close the file in Excel** (or at least save and close) while the backend runs. Excel locks open files;
+  the backend detects the lock, refuses to write, and the job is retried later rather than lost or sent without a record.
+- The backend re-reads the file every time, so anything you saved is picked up on the next fetch.
+  Unsaved changes in an open Excel window are invisible to it.
+- A one-time backup copy (`contact_out.xlsx.<timestamp>.bak`) is made before the first write of each run.
+- Writes touch only the status (and optional note) cell; other cells and formatting are preserved.
+  Very exotic Excel features (macros, pivot tables, embedded images) may not survive a save. Keep your master copy elsewhere.
+- Rows whose **subject or message is still empty are skipped untouched** until you fill them in. Rows with a
+  malformed email address are marked `failed` with the reason in the optional note column (`COL_NOTE`).
 
 ## Sheet layout
 
@@ -28,12 +53,12 @@ configurable.
 - `failed`: provably **not** sent (e.g. recipient wouldn't resolve). Safe to retry: clear J.
 - `needs_review`: Send was clicked but not confirmed. **Check Outlook's Sent Items** first, then clear
   J to retry or set it to `sent`.
-- A row with a malformed address, or empty subject/content, is marked `failed` with the reason in the note
-  column (we refuse to send to a partly-parsed recipient list).
+- A row with a malformed email address is marked `failed` with the reason in the note column (we refuse to
+  send to a partly-parsed recipient list). A row with no address, subject or message **yet** is just skipped.
 - A final status is never overwritten by a different one, and any status you type by hand is respected.
 - Stuck on `pending` after a crash? Clear J to requeue (after checking Sent Items if unsure).
 
-## Setup
+## Setup for Google Sheets (optional, `DATA_SOURCE=google`)
 
 1. **Google Cloud**: create a project, enable the **Google Sheets API**, configure the OAuth consent
    screen, then create an **OAuth client ID of type "Desktop app"**.

@@ -6,7 +6,7 @@ A custom system, built in parts:
 |---|---|---|
 | Chrome extension that sends queued emails through Outlook Web | MV3, plain JS | Implemented: see [`extension/README.md`](extension/README.md) |
 | Backend API (hands out one row at a time, records results) | Node.js + Express | Implemented: see [`backend/README.md`](backend/README.md) |
-| Database | Google Sheet (G emails, H subject, I content, J status) | Implemented via the backend |
+| Data | Local Excel file by default (G emails, H subject, I message, J status); Google Sheets optional | Implemented via the backend |
 
 ```bash
 npm install

@@ -2,3 +2,11 @@ node_modules/
 .DS_Store
 *.log
 .env
+
+# Contact data must never be committed
+*.xlsx
+*.xls
+*.csv
+*.bak
+~$*
+backend/data/
