@@ -62,8 +62,8 @@ await outlook.goto('https://outlook.live.com/mail/0/');
 await outlook.waitForTimeout(500);
 
 await sw.evaluate((port) => chrome.storage.local.set({
-  settings: { apiBaseUrl: `http://localhost:${port}`, apiKey: 'test-key-123', enabled: true, delayBetweenJobsSec: 10 },
-  runtime: { running: false, consecutiveFailures: 0, lastFinishedAt: 0 },
+  settings: { apiBaseUrl: `http://localhost:${port}`, apiKey: 'test-key-123', enabled: true, fetchMinMinutes: 10, fetchMaxMinutes: 20 },
+  runtime: { running: false, consecutiveFailures: 0, lastFinishedAt: 0, nextClaimAt: 0 },
 }), port);
 const popup = await ctx.newPage();
 await popup.goto(`chrome-extension://${id}/popup.html`);

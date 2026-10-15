@@ -8,10 +8,10 @@ import { goodJob } from './_helpers.js';
 
 const quiet = { log: async () => {} };
 
-function setup({ job = goodJob(), sendResult, sendError, duringSend = null, state = null, enabled = true, running = true, stored = {} } = {}) {
+function setup({ rand = 0, job = goodJob(), sendResult, sendError, duringSend = null, state = null, enabled = true, running = true, stored = {} } = {}) {
   const area = memoryArea({
-    settings: { apiBaseUrl: 'https://api.example.com', apiKey: 'k-12345', enabled, delayBetweenJobsSec: 30 },
-    runtime: { running, consecutiveFailures: 0, lastFinishedAt: 0 },
+    settings: { apiBaseUrl: 'https://api.example.com', apiKey: 'k-12345', enabled, fetchMinMinutes: 10, fetchMaxMinutes: 20 },
+    runtime: { running, consecutiveFailures: 0, lastFinishedAt: 0, nextClaimAt: 0 },
     ...stored,
   });
   const store = createStore(area);
@@ -45,7 +45,7 @@ function setup({ job = goodJob(), sendResult, sendError, duringSend = null, stat
     },
   };
   env.orch = createOrchestrator({
-    store, api, tabs, logger: quiet, now: () => clock, scheduleNext: (s) => calls.schedule.push(s),
+    store, api, tabs, logger: quiet, now: () => clock, scheduleNext: (s) => calls.schedule.push(s), random: () => rand,
     options: { staleMs: 120000 },
   });
   return env;
@@ -107,7 +107,7 @@ test('pre-send failure -> failed; pauses only after repeated failures', async ()
   await e.orch.tick();
   assert.deepEqual(statuses(e), ['processing', 'failed']);
   assert.equal((await e.store.getRuntime()).running, true);
-  for (let i = 0; i < 2; i++) { e.advance(60000); await e.orch.tick(); }
+  for (let i = 0; i < 2; i++) { e.advance(11 * 60000); await e.orch.tick(); }
   assert.equal((await e.store.getRuntime()).running, false);
 });
 test('a "failed" result with sendClicked=true is downgraded to needs_review', async () => {
@@ -176,12 +176,12 @@ test('report failure keeps the result pending; next tick flushes before claiming
   assert.equal(e.calls.claim, 1, 'must not claim a new job before the pending report is delivered');
   assert.equal(e.calls.reports.at(-1).status, 'sent');
   assert.equal(await e.store.getPendingReport(), null);
-  assert.equal(r.state, 'cooldown');
+  assert.equal(r.state, 'waiting');
 });
 test('report failure never causes a second send', async () => {
   const e = setup({ sendResult: { outcome: 'sent', evidence: 'x' } });
   e.reportFails = 100;
-  await e.orch.tick(); e.advance(60000); await e.orch.tick(); e.advance(60000); await e.orch.tick();
+  await e.orch.tick(); e.advance(11 * 60000); await e.orch.tick(); e.advance(11 * 60000); await e.orch.tick();
   assert.equal(e.calls.send.filter((m) => m.type === 'OEA_SEND_JOB').length, 1);
 });
 
@@ -227,11 +227,11 @@ test('rate limit honours Retry-After', async () => {
   await e.orch.tick();
   assert.equal(e.calls.schedule.at(-1), 90);
 });
-test('cooldown between emails', async () => {
+test('no second fetch until the random gap has passed', async () => {
   const e = setup({ sendResult: { outcome: 'sent', evidence: 'x' } });
   await e.orch.tick();
   e.advance(5000);
-  assert.equal((await e.orch.tick()).state, 'cooldown');
+  assert.equal((await e.orch.tick()).state, 'waiting');
   assert.equal(e.calls.claim, 1);
 });
 test('concurrent ticks do not double-process', async () => {
@@ -239,4 +239,43 @@ test('concurrent ticks do not double-process', async () => {
   const [a, b] = await Promise.all([e.orch.tick(), e.orch.tick()]);
   assert.ok([a.state, b.state].includes('busy'));
   assert.equal(e.calls.send.filter((m) => m.type === 'OEA_SEND_JOB').length, 1);
+});
+
+const MIN = 60000;
+test('fetch gap is random within [min,max] minutes and persisted as nextClaimAt', async () => {
+  for (const [rand, minutes] of [[0, 10], [1, 20], [0.5, 15]]) {
+    const e = setup({ job: null, rand });
+    await e.orch.tick();
+    const rt = await e.store.getRuntime();
+    assert.equal(rt.nextClaimAt - 1_000_000, minutes * MIN);
+    assert.equal(e.calls.schedule.at(-1), minutes * 60);
+  }
+});
+test('gap is applied after a fetch that returned a job too, and no earlier fetch happens', async () => {
+  const e = setup({ rand: 1, sendResult: { outcome: 'sent', evidence: 'x' } });
+  await e.orch.tick();
+  e.advance(19 * MIN);
+  assert.equal((await e.orch.tick()).state, 'waiting');
+  assert.equal(e.calls.claim, 1);
+  e.advance(2 * MIN);
+  await e.orch.tick();
+  assert.equal(e.calls.claim, 2);
+});
+test('ticks inside the gap never touch the backend claim endpoint (alarm storm safe)', async () => {
+  const e = setup({ job: null });
+  await e.orch.tick();
+  for (let i = 0; i < 25; i++) { e.advance(20000); await e.orch.tick(); }
+  assert.equal(e.calls.claim, 1);
+});
+test('Start resets the gap so the first fetch is immediate', async () => {
+  const e = setup({ job: null, running: false });
+  await e.store.patchRuntime({ nextClaimAt: 9_999_999_999 });
+  await e.orch.start();
+  assert.equal(e.calls.claim, 1);
+});
+test('a claim error retries soon (not after a full 10-20 min window)', async () => {
+  const e = setup(); e.claimError = new ApiError('network', 'down');
+  await e.orch.tick();
+  const rt = await e.store.getRuntime();
+  assert.ok(rt.nextClaimAt - 1_000_000 <= 60000);
 });

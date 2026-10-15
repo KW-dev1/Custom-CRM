@@ -22,7 +22,9 @@ test('embedded credentials and garbage URLs are rejected', () => {
 });
 test('status path needs {id}; delay bounds enforced', () => {
   assert.ok(validateSettings({ ...goodSettings(), statusPath: '/status' }).errors.statusPath);
-  assert.ok(validateSettings({ ...goodSettings(), delayBetweenJobsSec: 1 }).errors.delayBetweenJobsSec);
+  assert.ok(validateSettings({ ...goodSettings(), fetchMinMinutes: 0 }).errors.fetchMinMinutes);
+  assert.ok(validateSettings({ ...goodSettings(), fetchMinMinutes: 20, fetchMaxMinutes: 10 }).errors.fetchMaxMinutes);
+  assert.equal(validateSettings({ ...goodSettings(), fetchMinMinutes: 10, fetchMaxMinutes: 20 }).ok, true);
 });
 test('empty status vocabulary value is rejected', () => {
   assert.ok(validateSettings({ ...goodSettings(), statusValues: { sent: '' } }).errors.statusValues);

@@ -16,12 +16,22 @@ const withTimeout = (p, ms) => new Promise((resolve, reject) => {
   p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
 });
 
-export function createOrchestrator({ store, api, tabs, logger, now = Date.now, scheduleNext = () => {}, keepAlive = () => () => {}, options = {} }) {
+export function createOrchestrator({ store, api, tabs, logger, now = Date.now, scheduleNext = () => {}, keepAlive = () => () => {}, random = Math.random, options = {} }) {
   const cfg = { ...DEFAULTS, ...options };
   let ticking = false;
 
   const setStatus = (code, message) => store.setStatus({ code, message, at: now() });
   const log = (e) => logger.log(e);
+
+  // Random gap between backend fetches (default 10-20 min), drawn fresh after every fetch.
+  const nextFetchDelayMs = (settings) => {
+    const min = settings.fetchMinMinutes * 60000;
+    const max = settings.fetchMaxMinutes * 60000;
+    return Math.round(min + random() * (max - min));
+  };
+  const setNextClaim = (ms) => store.patchRuntime({ nextClaimAt: now() + ms });
+  const scheduleFor = (nextClaimAt) => scheduleNext(nextClaimAt > now() ? Math.ceil((nextClaimAt - now()) / 1000) : cfg.pollSec);
+  const clock = (t) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   async function pauseAutomation() {
     await store.patchRuntime({ running: false });
@@ -75,7 +85,7 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
     if (status === STATUS.SENT) await setStatus(UI_STATUS.SENT, `Email sent (verified). ${message}${suffix}`);
     else if (status === STATUS.NEEDS_REVIEW) await setStatus(UI_STATUS.NEEDS_REVIEW, `${message}${suffix}`);
     else await setStatus(UI_STATUS.FAILED, `${message}${suffix}`);
-    scheduleNext(settings.delayBetweenJobsSec);
+    scheduleFor((await store.getRuntime()).nextClaimAt || 0);
   }
 
   async function handleApiError(e, stage) {
@@ -85,8 +95,9 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
       await setStatus(UI_STATUS.FAILED, `${e.message} Automation paused; update the API key and press Start.`);
       return;
     }
-    if (e.kind === 'rate_limit') scheduleNext(Math.ceil((e.retryAfterMs ?? 60000) / 1000));
-    else scheduleNext(cfg.pollSec);
+    const wait = e.kind === 'rate_limit' ? (e.retryAfterMs ?? 60000) : cfg.pollSec * 1000;
+    await setNextClaim(wait);
+    scheduleNext(Math.ceil(wait / 1000));
     await setStatus(UI_STATUS.FAILED, `${e.message || 'Backend error.'} Will retry.`);
   }
 
@@ -126,12 +137,10 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
       return { state: 'recovered' };
     }
 
-    const since = now() - (rt.lastFinishedAt || 0);
-    if (since < settings.delayBetweenJobsSec * 1000) {
-      const wait = Math.ceil((settings.delayBetweenJobsSec * 1000 - since) / 1000);
-      await setStatus(UI_STATUS.READY, `Waiting ${wait}s between emails.`);
-      scheduleNext(wait);
-      return { state: 'cooldown' };
+    if (now() < (rt.nextClaimAt || 0)) {
+      await setStatus(UI_STATUS.READY, `Ready. Next check for jobs at ${clock(rt.nextClaimAt)}.`);
+      scheduleFor(rt.nextClaimAt);
+      return { state: 'waiting' };
     }
 
     const tab = await tabs.findOutlookTab();
@@ -157,9 +166,11 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
     let job;
     try { job = await api.claimJob(settings); }
     catch (e) { if (e instanceof ApiError) { await handleApiError(e, 'claim'); return { state: 'claim_error' }; } throw e; }
+    const gap = nextFetchDelayMs(settings);
+    await setNextClaim(gap); // one fetch per random 10-20 min window, whether or not a job came back
     if (!job) {
-      await setStatus(UI_STATUS.READY, 'Ready. No jobs waiting.');
-      scheduleNext(cfg.pollSec);
+      await setStatus(UI_STATUS.READY, `Ready. No jobs waiting; next check at ${clock(now() + gap)}.`);
+      scheduleNext(Math.ceil(gap / 1000));
       return { state: 'idle' };
     }
     await log({ jobId: job.id, stage: 'claim', ok: true });
@@ -236,7 +247,7 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
       }
     },
     async start() {
-      await store.patchRuntime({ running: true, consecutiveFailures: 0 });
+      await store.patchRuntime({ running: true, consecutiveFailures: 0, nextClaimAt: 0 });
       return this.tick();
     },
     async stop() {

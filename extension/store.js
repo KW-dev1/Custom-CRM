@@ -19,8 +19,8 @@ export function createStore(area) {
   return {
     getSettings: async () => normalizeSettings(await get(KEYS.settings, {})),
     saveSettings: (s) => set(KEYS.settings, s),
-    getRuntime: () => get(KEYS.runtime, { running: false, consecutiveFailures: 0, lastFinishedAt: 0 }),
-    patchRuntime: async (p) => set(KEYS.runtime, { ...(await get(KEYS.runtime, { running: false, consecutiveFailures: 0, lastFinishedAt: 0 })), ...p }),
+    getRuntime: () => get(KEYS.runtime, { running: false, consecutiveFailures: 0, lastFinishedAt: 0, nextClaimAt: 0 }),
+    patchRuntime: async (p) => set(KEYS.runtime, { ...(await get(KEYS.runtime, { running: false, consecutiveFailures: 0, lastFinishedAt: 0, nextClaimAt: 0 })), ...p }),
     getRun: () => get(KEYS.run, null),
     setRun: (r) => set(KEYS.run, r),
     clearRun: () => del(KEYS.run),

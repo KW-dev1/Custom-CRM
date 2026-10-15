@@ -39,7 +39,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   statusMethod: 'POST',
   jobStatePath: '', // optional, e.g. /api/email-jobs/{id}; empty = skip the pre-send state check
   statusValues: { ...DEFAULT_STATUS_VALUES },
-  delayBetweenJobsSec: 30,
+  fetchMinMinutes: 10, // the backend is asked for one job at a random time between min and max minutes
+  fetchMaxMinutes: 20,
   enabled: false,
 });
 
@@ -52,7 +53,8 @@ export function normalizeSettings(raw = {}) {
   s.claimMethod = String(s.claimMethod || 'POST').toUpperCase();
   s.statusMethod = String(s.statusMethod || 'POST').toUpperCase();
   s.statusValues = { ...DEFAULT_STATUS_VALUES, ...(raw.statusValues || {}) };
-  s.delayBetweenJobsSec = Number(s.delayBetweenJobsSec);
+  s.fetchMinMinutes = Number(s.fetchMinMinutes);
+  s.fetchMaxMinutes = Number(s.fetchMaxMinutes);
   s.enabled = Boolean(s.enabled);
   return s;
 }
@@ -89,9 +91,11 @@ export function validateSettings(input) {
   }
   if (!['GET', 'POST'].includes(s.claimMethod)) errors.claimMethod = 'Claim method must be GET or POST.';
   if (!['POST', 'PUT', 'PATCH'].includes(s.statusMethod)) errors.statusMethod = 'Status method must be POST, PUT or PATCH.';
-  if (!Number.isFinite(s.delayBetweenJobsSec) || s.delayBetweenJobsSec < 10 || s.delayBetweenJobsSec > 3600) {
-    errors.delayBetweenJobsSec = 'Delay must be between 10 and 3600 seconds.';
-  }
+  const okMin = Number.isFinite(s.fetchMinMinutes) && s.fetchMinMinutes >= 1 && s.fetchMinMinutes <= 1440;
+  const okMax = Number.isFinite(s.fetchMaxMinutes) && s.fetchMaxMinutes >= 1 && s.fetchMaxMinutes <= 1440;
+  if (!okMin) errors.fetchMinMinutes = 'Minimum must be between 1 and 1440 minutes.';
+  if (!okMax) errors.fetchMaxMinutes = 'Maximum must be between 1 and 1440 minutes.';
+  if (okMin && okMax && s.fetchMinMinutes > s.fetchMaxMinutes) errors.fetchMaxMinutes = 'Maximum must be at least the minimum.';
   for (const k of Object.values(STATUS)) {
     const v = s.statusValues[k];
     if (typeof v !== 'string' || !v.trim()) errors.statusValues = `Status value for "${k}" must be a non-empty string.`;

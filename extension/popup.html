@@ -61,8 +61,12 @@
         <small class="err" id="err-statusPath"></small>
         <label>Job state path (optional) <input id="jobStatePath" type="text" placeholder="/api/email-jobs/{id}"></label>
         <small class="err" id="err-jobStatePath"></small>
-        <label>Seconds between emails <input id="delayBetweenJobsSec" type="number" min="10" max="3600"></label>
-        <small class="err" id="err-delayBetweenJobsSec"></small>
+        <div class="row">
+          <label>Fetch every, min (minutes) <input id="fetchMinMinutes" type="number" min="1" max="1440"></label>
+          <label>Fetch every, max (minutes) <input id="fetchMaxMinutes" type="number" min="1" max="1440"></label>
+        </div>
+        <small class="err" id="err-fetchMinMinutes"></small>
+        <small class="err" id="err-fetchMaxMinutes"></small>
         <label>Status values (JSON) <textarea id="statusValues" rows="4" spellcheck="false"></textarea></label>
         <small class="err" id="err-statusValues"></small>
       </details>

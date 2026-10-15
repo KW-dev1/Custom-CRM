@@ -4,7 +4,7 @@ import { createStore, KEYS } from './store.js';
 
 const store = createStore(chrome.storage.local);
 const $ = (id) => document.getElementById(id);
-const FIELDS = ['apiBaseUrl', 'apiKey', 'authHeader', 'authScheme', 'claimMethod', 'claimPath', 'statusMethod', 'statusPath', 'jobStatePath', 'delayBetweenJobsSec'];
+const FIELDS = ['apiBaseUrl', 'apiKey', 'authHeader', 'authScheme', 'claimMethod', 'claimPath', 'statusMethod', 'statusPath', 'jobStatePath', 'fetchMinMinutes', 'fetchMaxMinutes'];
 
 const LABELS = {
   not_configured: 'Not configured', waiting_outlook: 'Waiting for Outlook', ready: 'Ready',

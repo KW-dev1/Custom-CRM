@@ -83,7 +83,6 @@ export function createApp({ service, cfg, log = () => {}, now = Date.now }) {
   app.use('/api', api);
   app.use((req, res) => res.status(404).json({ error: { code: 'NOT_FOUND', message: 'No such endpoint.' } }));
 
-  // eslint-disable-next-line no-unused-vars
   app.use((err, req, res, next) => {
     if (err instanceof JobError) {
       if (err.retryAfterSec) res.set('retry-after', String(err.retryAfterSec));
