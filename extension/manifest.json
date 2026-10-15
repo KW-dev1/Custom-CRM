@@ -3,7 +3,7 @@
   "name": "Outlook Email Automation",
   "version": "0.1.0",
   "description": "Sends queued email jobs from your backend through Outlook Web using DOM automation.",
-  "minimum_chrome_version": "116",
+  "minimum_chrome_version": "120",
   "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
   "action": {
     "default_title": "Outlook Email Automation",
