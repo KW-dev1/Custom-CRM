@@ -111,3 +111,14 @@ test('getJobState returns null when not configured, status when configured', asy
   const s = { ...goodSettings(), jobStatePath: '/jobs/{id}' };
   assert.equal(await getJobState(s, '1', { fetchImpl: async () => fakeResponse(200, { status: 'sent' }) }), 'sent');
 });
+
+test('parseJobResponse keeps cc and defaults it to []', () => {
+  assert.deepEqual(parseJobResponse({ job: goodJob({ cc: ['b@example.com'] }) }).cc, ['b@example.com']);
+  assert.deepEqual(parseJobResponse({ job: goodJob() }).cc, []);
+});
+test('validateJob: CC rules', () => {
+  assert.equal(validateJob(goodJob({ cc: ['b@example.com', 'c@example.com'] })).ok, true);
+  for (const cc of [['nope'], 'b@example.com', [5], ['a@example.com'], ['b@example.com', 'B@EXAMPLE.com'], Array.from({ length: 21 }, (_, i) => `u${i}@example.com`)]) {
+    assert.equal(validateJob(goodJob({ cc })).ok, false, JSON.stringify(cc).slice(0, 40));
+  }
+});

@@ -15,7 +15,7 @@ export class ApiError extends Error {
 }
 
 const EMAIL_RE = /^[^\s@,;<>()"]+@[^\s@,;<>()"]+\.[^\s@,;<>()"]{2,}$/;
-export const LIMITS = { id: 200, subject: 998, body: 200000, email: 254 };
+export const LIMITS = { id: 200, subject: 998, body: 200000, email: 254, cc: 20 };
 
 export function buildUrl(settings, path, params = {}) {
   const s = normalizeSettings(settings);
@@ -70,6 +70,7 @@ export function parseJobResponse(body) {
   return {
     id: job.id === undefined || job.id === null ? job.id : String(job.id),
     to: job.to,
+    cc: job.cc === undefined || job.cc === null ? [] : job.cc,
     subject: job.subject,
     body: job.body,
     metadata: isObj(job.metadata) ? job.metadata : undefined,
@@ -82,6 +83,15 @@ export function validateJob(job) {
   if (typeof job.id !== 'string' || !job.id.trim() || job.id.length > LIMITS.id) errors.push('Missing or invalid job id.');
   if (typeof job.to !== 'string' || !job.to.trim()) errors.push('Missing recipient (to).');
   else if (job.to.length > LIMITS.email || !EMAIL_RE.test(job.to.trim())) errors.push('Recipient must be a single valid email address.');
+  const cc = job.cc === undefined ? [] : job.cc;
+  if (!Array.isArray(cc)) errors.push('cc must be an array of email addresses.');
+  else if (cc.length > LIMITS.cc) errors.push(`Too many CC recipients (max ${LIMITS.cc}).`);
+  else {
+    const bad = cc.filter((a) => typeof a !== 'string' || a.length > LIMITS.email || !EMAIL_RE.test(a.trim()));
+    if (bad.length) errors.push('Every CC entry must be a single valid email address.');
+    const all = [job.to, ...cc].filter((a) => typeof a === 'string').map((a) => a.trim().toLowerCase());
+    if (new Set(all).size !== all.length) errors.push('Recipients must be unique (To and CC overlap or repeat).');
+  }
   if (typeof job.subject !== 'string' || !job.subject.trim()) errors.push('Missing subject.');
   else if (/[\r\n]/.test(job.subject) || job.subject.length > LIMITS.subject) errors.push('Subject must be a single line of at most 998 characters.');
   if (typeof job.body !== 'string' || !job.body.trim()) errors.push('Missing body.');

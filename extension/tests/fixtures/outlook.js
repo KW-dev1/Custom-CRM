@@ -16,42 +16,48 @@ const SHELL = `<!doctype html><html><body>
  * opts.resolve: false => recipient never resolves; 'invalid' => Outlook shows an error
  * opts.pre: 'compose' => a draft is already open; 'signedOut' | 'noShell'
  * opts.noSend: omit the Send button
+ * opts.noCcToggle: omit the "Cc" button; opts.ccResolve=false: Cc recipients never resolve
  */
 export async function createOutlook(opts = {}) {
-  const { sendMode = 'close', resolve = true, pre = null, noSend = false, url = 'https://outlook.live.com/mail/0/' } = opts;
+  const { sendMode = 'close', resolve = true, pre = null, noSend = false, noCcToggle = false, ccResolve = true, url = 'https://outlook.live.com/mail/0/' } = opts;
   const dom = new JSDOM(pre === 'signedOut' ? '<body><a data-task="signin" href="#">Sign in</a></body>' : pre === 'noShell' ? '<body><p>Loading…</p></body>' : SHELL,
     { url, runScripts: 'outside-only', pretendToBeVisual: true });
   const { window } = dom;
   const doc = window.document;
-  const c = { sendClicks: 0, newMailClicks: 0, ccTouched: false };
+  const c = { sendClicks: 0, newMailClicks: 0, ccTouched: false, ccToggleClicks: 0 };
 
   const openCompose = () => {
     const wrap = doc.createElement('div');
     wrap.id = 'compose';
     wrap.innerHTML = `
-      <div class="toolbar">${noSend ? '' : '<button aria-label="Send">Send</button>'}</div>
-      <div class="recipients"></div>
+      <div class="toolbar">${noSend ? '' : '<button aria-label="Send">Send</button>'}${noCcToggle ? '' : '<button aria-label="Cc">Cc</button>'}</div>
+      <div class="recipients" data-well="to"></div>
       <div role="textbox" aria-label="To" contenteditable="true"></div>
-      <div role="textbox" aria-label="Cc" contenteditable="true"></div>
+      <div class="recipients" data-well="cc"></div>
+      <div role="textbox" aria-label="Cc" contenteditable="true" hidden></div>
       <input aria-label="Subject" placeholder="Add a subject">
       <div role="textbox" aria-label="Message body, press Alt+F10 to exit" contenteditable="true"></div>`;
     doc.body.appendChild(wrap);
-    const to = wrap.querySelector('[aria-label="To"]');
-    wrap.querySelector('[aria-label="Cc"]').addEventListener('input', () => { c.ccTouched = true; });
-    to.addEventListener('keydown', (ev) => {
+    const ccField = wrap.querySelector('[aria-label="Cc"][role="textbox"]');
+    const toggle = wrap.querySelector('button[aria-label="Cc"]');
+    if (toggle) toggle.addEventListener('click', () => { c.ccToggleClicks += 1; ccField.hidden = false; });
+    ccField.addEventListener('input', () => { c.ccTouched = true; });
+    const wire = (field, well, ok) => field.addEventListener('keydown', (ev) => {
       if (ev.key !== 'Enter') return;
-      const text = to.textContent.replace(/;$/, '').trim();
+      const text = field.textContent.replace(/;$/, '').trim();
       if (!text) return;
-      if (resolve === 'invalid') {
+      if (ok === 'invalid') {
         const a = doc.createElement('div'); a.setAttribute('role', 'alert'); a.textContent = `We couldn't find a match for ${text}.`;
         wrap.appendChild(a); return;
       }
-      if (resolve === false) return;
+      if (ok === false) return;
       const pill = doc.createElement('span');
       pill.setAttribute('role', 'button'); pill.setAttribute('aria-label', text); pill.textContent = text;
-      wrap.querySelector('.recipients').appendChild(pill);
-      to.textContent = '';
+      wrap.querySelector(`.recipients[data-well="${well}"]`).appendChild(pill);
+      field.textContent = '';
     });
+    wire(wrap.querySelector('[aria-label="To"]'), 'to', resolve);
+    wire(ccField, 'cc', ccResolve);
     const send = wrap.querySelector('[aria-label="Send"]');
     if (send) send.addEventListener('click', () => {
       c.sendClicks += 1;
@@ -68,6 +74,8 @@ export async function createOutlook(opts = {}) {
   for (const s of SCRIPTS) window.eval(s);
   return { dom, window, doc, OEA: window.OEA, controls: c, loc: window.location };
 }
+
+export const wellOf = (doc, email) => { const el = [...doc.querySelectorAll('.recipients span')].find((x) => x.textContent === email); return el ? el.parentElement.dataset.well : null; };
 
 export function newGuard(window) {
   return window.eval('({ processed: new Set(), current: null })');

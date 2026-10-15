@@ -150,3 +150,49 @@ test('multiline body with HTML-looking text is inserted as text only', async () 
   await run(o, job({ body: 'a\n<script>alert(1)</script>\nb' }));
   assert.equal(o.doc.querySelector('#compose script'), null);
 });
+
+// ---- CC support: first address is To, the rest are Cc ----
+import { wellOf } from './fixtures/outlook.js';
+
+test('CC: addresses go to the Cc well, To address stays in To; Send clicked once', async () => {
+  const o = await createOutlook();
+  const { r } = await run(o, job({ cc: ['b@example.com', 'c@example.com'] }));
+  assert.equal(r.outcome, 'sent');
+  assert.equal(o.controls.ccToggleClicks, 1, 'Cc field revealed via its toggle');
+  assert.equal(o.controls.sendClicks, 1);
+});
+test('CC: pills land in the right wells (compose kept open)', async () => {
+  const o = await createOutlook({ sendMode: 'never' });
+  await run(o, job({ cc: ['b@example.com', 'c@example.com'] }));
+  assert.equal(wellOf(o.doc, 'a@example.com'), 'to');
+  assert.equal(wellOf(o.doc, 'b@example.com'), 'cc');
+  assert.equal(wellOf(o.doc, 'c@example.com'), 'cc');
+});
+test('no CC in the job: Cc control is never touched', async () => {
+  const o = await createOutlook();
+  const { r } = await run(o, job({ cc: [] }));
+  assert.equal(r.outcome, 'sent');
+  assert.equal(o.controls.ccToggleClicks, 0);
+  assert.equal(o.controls.ccTouched, false);
+});
+test('CC unresolved => failed before Send (never sends with a partial recipient list)', async () => {
+  const o = await createOutlook({ ccResolve: false });
+  const { r } = await run(o, job({ cc: ['b@example.com'] }));
+  assert.equal(r.outcome, 'failed');
+  assert.equal(r.sendClicked, false);
+  assert.equal(o.controls.sendClicks, 0);
+});
+test('missing Cc control => failed before Send', async () => {
+  const o = await createOutlook({ noCcToggle: true });
+  const { r } = await run(o, job({ cc: ['b@example.com'] }));
+  assert.equal(r.code, 'CC_FIELD_MISSING');
+  assert.equal(o.controls.sendClicks, 0);
+});
+test('invalid or overlapping CC lists never reach Outlook', async () => {
+  for (const cc of [['nope'], ['a@example.com'], ['b@example.com', 'B@example.com'], 'b@example.com']) {
+    const o = await createOutlook();
+    const { r } = await run(o, job({ cc }));
+    assert.equal(r.code, 'INVALID_JOB', JSON.stringify(cc));
+    assert.equal(o.controls.newMailClicks, 0);
+  }
+});

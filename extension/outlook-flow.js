@@ -16,13 +16,18 @@
     if (!job || typeof job !== 'object') return ['Job is not an object.'];
     if (typeof job.id !== 'string' || !job.id) errors.push('Missing job id.');
     if (typeof job.to !== 'string' || !EMAIL_RE.test(job.to.trim())) errors.push('Recipient must be a single valid email address.');
+    const cc = job.cc === undefined ? [] : job.cc;
+    if (!Array.isArray(cc) || cc.length > 20 || cc.some((a) => typeof a !== 'string' || !EMAIL_RE.test(a.trim()))) errors.push('CC must be a list of valid email addresses.');
+    else {
+      const all = [job.to, ...cc].filter((a) => typeof a === 'string').map((a) => a.trim().toLowerCase());
+      if (new Set(all).size !== all.length) errors.push('Recipients must be unique.');
+    }
     if (typeof job.subject !== 'string' || !job.subject.trim() || /[\r\n]/.test(job.subject)) errors.push('Subject must be a non-empty single line.');
     if (typeof job.body !== 'string' || !job.body.trim()) errors.push('Missing body.');
     return errors;
   }
 
-  async function enterRecipient(doc, compose, email, timeoutMs) {
-    const field = compose.to;
+  async function enterRecipient(doc, compose, field, email, timeoutMs) {
     field.focus();
     if (field.tagName === 'INPUT') OEA.setInputValue(field, email);
     else OEA.setEditableText(field, email);
@@ -35,7 +40,7 @@
           () => {
             const err = OEA.findRecipientError(doc);
             if (err) throw new OEAError('RECIPIENT_REJECTED', `Outlook did not accept the recipient: ${err}`);
-            return OEA.findRecipientPill(compose, email);
+            return OEA.findRecipientPill(compose, email, field);
           },
           { timeoutMs: Math.ceil(timeoutMs / 2), description: 'the recipient to resolve', doc },
         );
@@ -49,10 +54,16 @@
 
   function validateComposed(doc, job, compose) {
     const problems = [];
+    const cc = job.cc || [];
     if (OEA.countCompose(doc) !== 1) problems.push('Expected exactly one open compose window.');
     const live = OEA.findCompose(doc);
     if (!live || live.root !== compose.root) problems.push('The compose window changed during filling.');
     if (!OEA.findRecipientPill(compose, job.to.trim())) problems.push('Recipient is not present in the To field.');
+    if (cc.length) {
+      const ccField = OEA.findCc(compose.root);
+      if (!ccField) problems.push('The Cc field is not available.');
+      else for (const a of cc) if (!OEA.findRecipientPill(compose, a.trim(), ccField)) problems.push('A CC recipient is not present in the Cc field.');
+    }
     if ((compose.subject.value || '') !== job.subject) problems.push('Subject does not match.');
     if (!OEA.squash(OEA.extractText(compose.body)).includes(OEA.squash(job.body))) problems.push('Body does not match.');
     if (compose.send.disabled || compose.send.getAttribute('aria-disabled') === 'true') problems.push('The Send button is disabled.');
@@ -98,7 +109,18 @@
       const compose = await OEA.waitFor(() => OEA.findCompose(doc), { timeoutMs: t.compose, description: 'the compose window', doc });
 
       await ctx.markStage(job.id, 'filling');
-      await enterRecipient(doc, compose, job.to.trim(), t.recipient);
+      await enterRecipient(doc, compose, compose.to, job.to.trim(), t.recipient);
+      const ccList = (job.cc || []).map((a) => a.trim());
+      if (ccList.length) {
+        let ccField = OEA.findCc(compose.root);
+        if (!ccField) {
+          const toggle = OEA.findCcToggle(compose.root);
+          if (!toggle) throw new OEAError('CC_FIELD_MISSING', 'Could not find the Cc control in the compose window.');
+          toggle.click();
+          ccField = await OEA.waitFor(() => OEA.findCc(compose.root), { timeoutMs: t.compose, description: 'the Cc field', doc });
+        }
+        for (const addr of ccList) await enterRecipient(doc, compose, ccField, addr, t.recipient);
+      }
       OEA.setInputValue(compose.subject, job.subject);
       if (compose.subject.value !== job.subject) throw new OEAError('SUBJECT_FAILED', 'Could not set the subject.');
       OEA.setEditableText(compose.body, job.body);

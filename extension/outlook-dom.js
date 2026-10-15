@@ -17,6 +17,7 @@
   const SELECTORS = {
     newMail: ['button[aria-label="New mail"]', 'button[title="New mail"]', 'button[aria-label="New message"]'],
     to: ['[role="textbox"][aria-label="To"]', '[contenteditable="true"][aria-label="To"]', 'input[aria-label="To"]'],
+    cc: ['[role="textbox"][aria-label="Cc"]', '[contenteditable="true"][aria-label="Cc"]', 'input[aria-label="Cc"]'],
     subject: ['input[aria-label="Subject"]', 'input[placeholder="Add a subject"]'],
     body: ['[role="textbox"][aria-label^="Message body"]', '[contenteditable="true"][aria-label^="Message body"]'],
     send: ['button[aria-label="Send"]', 'button[title="Send"]'],
@@ -25,7 +26,7 @@
     banners: ['[role="alert"]', '[role="alertdialog"]', '[role="dialog"]'],
     toasts: ['[role="status"]', '[role="alert"]', '[aria-live="polite"]', '[aria-live="assertive"]'],
   };
-  const LABELS = { newMail: ['new mail', 'new message'], send: ['send'] };
+  const LABELS = { newMail: ['new mail', 'new message'], send: ['send'], ccToggle: ['cc'] };
   const SEND_ERROR_RE = /(couldn['’]t|can['’]t|could not|unable to|failed to)\s+(be\s+)?send|(wasn['’]t|was not|not)\s+sent|delivery (has )?failed/i;
   const SENT_TOAST_RE = /\b(message|email|mail)\s+(has been\s+|was\s+)?sent\b/i;
 
@@ -65,6 +66,8 @@
   // ---- finders ----
   const findNewMail = (doc) => first(doc, SELECTORS.newMail) || byLabel(doc, LABELS.newMail);
   const findSubject = (doc) => first(doc, SELECTORS.subject);
+  const findCc = (scope) => first(scope, SELECTORS.cc);
+  const findCcToggle = (scope) => byLabel(scope, LABELS.ccToggle);
   const countCompose = (doc) => all(doc, SELECTORS.subject).length;
 
   /** Locate the (single) open compose form: {root,to,subject,body,send} or null. */
@@ -202,11 +205,11 @@
 
   // ---- recipient detection ----
   /** A resolved recipient chip inside the compose form (outside the To text box itself). */
-  function findRecipientPill(compose, email) {
+  function findRecipientPill(compose, email, field = compose.to) {
     const needle = email.toLowerCase();
     const candidates = compose.root.querySelectorAll('[aria-label],[title],span,button,[role="button"],[role="option"]');
     for (const el of candidates) {
-      if (el === compose.to || compose.to.contains(el) || el.contains(compose.to)) continue;
+      if (el === field || field.contains(el) || el.contains(field)) continue;
       if (compose.body.contains(el) || el.contains(compose.body) || compose.subject === el) continue;
       const hay = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''} ${el.textContent || ''}`.toLowerCase();
       if (hay.includes(needle) && (el.textContent || '').length < 200) return el;
@@ -225,7 +228,7 @@
   }
 
   Object.assign(OEA, {
-    MAIL_PREFIX, OEAError, SELECTORS, isVisible, lowestCommonAncestor, findNewMail, findSubject, countCompose, findCompose,
+    MAIL_PREFIX, OEAError, SELECTORS, isVisible, lowestCommonAncestor, findNewMail, findSubject, findCc, findCcToggle, countCompose, findCompose,
     detectReadiness, waitFor, extractText, squash, setInputValue, setEditableText, pressKey, findRecipientPill,
     findSendError, findRecipientError, findSentToast,
   });
