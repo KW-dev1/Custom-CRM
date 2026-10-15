@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Outlook Email Automation</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>Outlook Email Automation</h1>
+    <span id="badge" class="badge" data-status="not_configured">Not configured</span>
+  </header>
+  <p id="statusMsg" class="status-msg" role="status"></p>
+
+  <section class="controls">
+    <label class="switch"><input type="checkbox" id="enabled"> <span>Automation enabled</span></label>
+    <div class="buttons">
+      <button id="start" type="button" class="primary">Start</button>
+      <button id="stop" type="button">Stop</button>
+    </div>
+  </section>
+
+  <section>
+    <h2>Last result</h2>
+    <div id="lastResult" class="card muted">No jobs processed yet.</div>
+  </section>
+
+  <section>
+    <h2>Recent errors</h2>
+    <ul id="errors" class="errors"><li class="muted">None.</li></ul>
+  </section>
+
+  <section>
+    <h2>Settings</h2>
+    <form id="form" novalidate>
+      <label>Backend API base URL
+        <input id="apiBaseUrl" type="url" placeholder="https://api.example.com" autocomplete="off">
+        <small class="err" id="err-apiBaseUrl"></small>
+      </label>
+      <label>API key / token
+        <input id="apiKey" type="password" autocomplete="off">
+        <small class="err" id="err-apiKey"></small>
+      </label>
+      <details>
+        <summary>Advanced (API contract placeholders)</summary>
+        <div class="row">
+          <label>Auth header <input id="authHeader" type="text"></label>
+          <label>Auth scheme <input id="authScheme" type="text" placeholder="Bearer (empty = raw key)"></label>
+        </div>
+        <small class="err" id="err-authHeader"></small>
+        <div class="row">
+          <label>Claim method <select id="claimMethod"><option>POST</option><option>GET</option></select></label>
+          <label>Claim path <input id="claimPath" type="text"></label>
+        </div>
+        <small class="err" id="err-claimPath"></small>
+        <div class="row">
+          <label>Status method <select id="statusMethod"><option>POST</option><option>PUT</option><option>PATCH</option></select></label>
+          <label>Status path <input id="statusPath" type="text"></label>
+        </div>
+        <small class="err" id="err-statusPath"></small>
+        <label>Job state path (optional) <input id="jobStatePath" type="text" placeholder="/api/email-jobs/{id}"></label>
+        <small class="err" id="err-jobStatePath"></small>
+        <label>Seconds between emails <input id="delayBetweenJobsSec" type="number" min="10" max="3600"></label>
+        <small class="err" id="err-delayBetweenJobsSec"></small>
+        <label>Status values (JSON) <textarea id="statusValues" rows="4" spellcheck="false"></textarea></label>
+        <small class="err" id="err-statusValues"></small>
+      </details>
+      <div class="buttons"><button id="save" type="submit" class="primary">Save settings</button></div>
+      <small id="saveMsg" role="status"></small>
+    </form>
+  </section>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
