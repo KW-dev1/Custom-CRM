@@ -35,7 +35,7 @@ In the popup, under **Settings**:
 | API key / token | Stored in `chrome.storage.local`. Never logged, never sent anywhere except the backend. |
 | Advanced → Auth header / scheme | Default `Authorization: Bearer <key>`. Clear the scheme to send the raw key (e.g. header `X-Api-Key`). |
 | Advanced → claim/status/state paths & methods | **Placeholders**, replace with your real endpoints. |
-| Advanced → Seconds between emails | Minimum gap between sends (default 30). Not a way around Outlook's own limits. |
+| Advanced → Fetch every (min/max minutes) | The backend is asked for **one job at a random time between min and max minutes** (default 10 and 20) after the previous fetch. Not a way around Outlook's own limits. |
 | Advanced → Status values (JSON) | Maps internal statuses to your backend's vocabulary. |
 
 On **Save**, Chrome asks for permission to contact *only* the backend origin you entered
@@ -45,8 +45,9 @@ On **Save**, Chrome asks for permission to contact *only* the backend origin you
 
 1. Open `https://outlook.live.com/mail/` in a tab and sign in yourself. **The extension never opens
    tabs or touches authentication**; with no Outlook tab it shows *Waiting for Outlook*.
-2. Tick **Automation enabled**, then press **Start**. **Stop** pauses. A worker tick runs every minute
-   via `chrome.alarms` and right after each job, so a suspended service worker is harmless.
+2. Tick **Automation enabled**, then press **Start**. **Stop** pauses. **Start fetches immediately**, then
+   once every random 10–20 minutes. A one-minute watchdog alarm only recovers/flushes state and checks the
+   clock; it never fetches early, so a suspended or restarted service worker is harmless.
 3. Reload any Outlook tab that was open *before* installing the extension.
 
 Popup statuses: *Not configured, Waiting for Outlook, Ready, Processing email, Email sent, Failed,
@@ -57,14 +58,16 @@ in a row.
 
 ## Backend API contract
 
-**Placeholders**: no backend contract was supplied. Everything below is the default the extension
-assumes; all paths, methods and the auth header are configurable. `jobs` fields are fixed:
-`id`, `to`, `subject`, `body` (+ optional `metadata`). Adapt `parseJobResponse` in `api.js` if your
+**Defaults**: Everything below is the default the extension
+assumes (and which the bundled backend implements); all paths, methods and the auth header are
+configurable. Job fields are fixed: `id`, `to`, `cc`, `subject`, `body` (+ optional `metadata`). Adapt `parseJobResponse` in `api.js` if your
 shape differs.
 
 **Claim next job**: `POST {base}/api/email-jobs/claim` (body `{}`)
 
-- `200 {"job": {"id":"job_123","to":"a@b.com","subject":"…","body":"…"}}` or a bare job object
+- `200 {"job": {"id":"r5-1a2b3c4d5e6f","to":"a@b.com","cc":["c@d.com"],"subject":"…","body":"…"}}` or a bare job object.
+  `cc` is optional (default `[]`): the first address is **To**, the others are **Cc**. The bundled
+  [`backend/`](../backend/README.md) implements exactly this contract.
 - `204` / `{"job": null}` → nothing to do
 - The backend should *reserve* the job for this caller (so two clients can't get it). The claim is
   **never retried** by the extension.
@@ -121,7 +124,7 @@ tests/             node:test + jsdom; tests/e2e/chrome-smoke.mjs is a manual rea
 
 ```bash
 npm install          # from the repo root (installs jsdom)
-npm test             # 98 unit/DOM tests
+npm test             # unit/DOM tests (extension + backend)
 npm run check        # syntax check of every extension file
 ```
 
@@ -131,11 +134,12 @@ validation, timeouts, uncertain send outcomes, crash recovery, manifest/permissi
 UI tests use a **simulated** Outlook page (`tests/fixtures/outlook.js`), which proves the logic, not
 that real Outlook's DOM matches.
 
-Optional real-Chrome smoke run (loads the unpacked extension, mock backend, simulated Outlook page):
+Optional real-Chrome smoke runs (load the unpacked extension against a simulated Outlook page):
 
 ```bash
 PLAYWRIGHT_DIR=<dir containing node_modules/playwright> CHROME_PATH=<chromium binary> \
-  node extension/tests/e2e/chrome-smoke.mjs close   # or: never (no confirmation → needs_review)
+  node extension/tests/e2e/chrome-smoke.mjs close   # mock backend; or: never (no confirmation → needs_review)
+  node extension/tests/e2e/full-stack.mjs           # real backend code (in-memory sheet) + To/Cc check
 ```
 
 ### Manual testing checklist
@@ -145,7 +149,7 @@ Use a **test** Outlook account and a test backend queue with addresses you contr
 - [ ] Load unpacked; popup opens; save invalid settings → errors; save valid → persists after reopening.
 - [ ] Backend permission prompt appears for only your backend origin.
 - [ ] No Outlook tab → *Waiting for Outlook*. Signed-out Outlook → waiting, no action taken.
-- [ ] One job → New mail opens; **To** (not Cc/Bcc), subject and multi-line body are correct; Send clicked once; mail arrives; backend shows `sent`.
+- [ ] One job → New mail opens; **To** (not Cc/Bcc), subject and multi-line body are correct; with 2+ addresses, the extras appear under **Cc**; Send clicked once; mail arrives; backend shows `sent`.
 - [ ] Check blank-line fidelity and that no signature/formatting is damaged.
 - [ ] Invalid recipient (e.g. nonexistent domain) → no send, `failed`.
 - [ ] Leave a draft open → job fails with *compose window already open*, nothing sent.
@@ -163,6 +167,7 @@ Use a **test** Outlook account and a test backend queue with addresses you contr
 | *Waiting for Outlook* | Open and sign in at `outlook.live.com/mail/`; reload tabs opened before install. |
 | *Outlook tab is not responding* | Reload the Outlook tab (content script not injected). |
 | *Could not find the "New mail" button* / compose never appears | Outlook UI/language changed; update `SELECTORS`/`LABELS` in `outlook-dom.js`. |
+| *Could not find the Cc control* | Outlook's Cc toggle changed; adjust `SELECTORS.cc` / `LABELS.ccToggle` in `outlook-dom.js`. |
 | *Recipient did not resolve* | Outlook may resolve chips differently; adjust `enterRecipient`/`findRecipientPill`. |
 | *Needs review* | Check **Sent Items**, then decide manually; press **Start** to resume. |
 | Backend errors | See *Recent errors* in the popup; DevTools → service worker console shows `[OEA]` logs. |
