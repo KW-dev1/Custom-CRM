@@ -1,0 +1,15 @@
+{
+  "name": "custom-crm",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Custom CRM system: Chrome extension (Outlook Web automation), Node.js backend, Google Sheets as database.",
+  "scripts": {
+    "test": "node --test extension/tests/",
+    "check": "node scripts/check-syntax.mjs",
+    "icons": "node scripts/make-icons.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0"
+  }
+}
