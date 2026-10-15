@@ -1,6 +1,7 @@
 import { loadConfig, ConfigError } from './config.js';
 import { createGoogleAuth } from './google-auth.js';
 import { createSheetsClient } from './sheets-client.js';
+import { createXlsxStore } from './xlsx-store.js';
 import { createJobService } from './jobs.js';
 import { createApp } from './app.js';
 import { createLogger } from './logger.js';
@@ -14,8 +15,10 @@ try {
   throw e;
 }
 
-const auth = createGoogleAuth(cfg.google);
-const sheet = createSheetsClient({ cfg, auth });
+const sheet = cfg.source.type === 'xlsx'
+  ? createXlsxStore({ cfg })
+  : createSheetsClient({ cfg, auth: createGoogleAuth(cfg.google) });
+log('info', 'data_source', { type: cfg.source.type, file: cfg.source.path ? cfg.source.path.split(/[\\/]/).pop() : undefined });
 const service = createJobService({ sheet, cfg, log });
 const app = createApp({ service, cfg, log });
 
