@@ -1,8 +1,7 @@
 import { loadConfig } from '../src/config.js';
 
 export const testConfig = (extra = {}) => loadConfig({
-  API_KEYS: 'abcdefghijklmnop1234', SHEET_URL: 'https://docs.google.com/spreadsheets/d/SHEETID/edit?gid=42',
-  GOOGLE_CLIENT_ID: 'c', GOOGLE_CLIENT_SECRET: 's', GOOGLE_REFRESH_TOKEN: 'r',
+  API_KEYS: 'abcdefghijklmnop1234', XLSX_PATH: '/tmp/fake-leads.xlsx',
   MIN_CLAIM_INTERVAL_SEC: '0', COL_NOTE: 'K', ...extra,
 });
 

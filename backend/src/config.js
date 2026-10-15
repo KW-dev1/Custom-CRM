@@ -1,5 +1,7 @@
 // Environment-based configuration. Secrets only come from the environment, never from source.
 
+import { resolve } from 'node:path';
+
 export class ConfigError extends Error {
   constructor(errors) {
     super(`Invalid configuration:\n - ${errors.join('\n - ')}`);
@@ -39,14 +41,22 @@ export function loadConfig(env = process.env) {
   if (!keys.length) errors.push('API_KEYS (or API_KEY) is required');
   if (keys.some((k) => k.length < 16)) errors.push('Every API key must be at least 16 characters');
 
+  const type = get('DATA_SOURCE', 'xlsx').toLowerCase();
+  if (!['xlsx', 'google'].includes(type)) errors.push('DATA_SOURCE must be "xlsx" (local Excel file) or "google" (Google Sheets)');
+  const google = type === 'google';
+
   const fromUrl = parseSheetUrl(get('SHEET_URL'));
   const sheetId = get('SHEET_ID') || fromUrl.id;
   const gid = get('SHEET_GID') || fromUrl.gid;
   const tab = get('SHEET_TAB');
-  if (!sheetId) errors.push('SHEET_URL or SHEET_ID is required');
-  else if (!/^[A-Za-z0-9_-]+$/.test(sheetId)) errors.push('SHEET_ID has invalid characters');
-  if (!gid && !tab) errors.push('SHEET_GID (or a SHEET_URL containing gid=) or SHEET_TAB is required');
-  if (gid && !/^\d+$/.test(gid)) errors.push('SHEET_GID must be numeric');
+  if (google) {
+    if (!sheetId) errors.push('SHEET_URL or SHEET_ID is required');
+    else if (!/^[A-Za-z0-9_-]+$/.test(sheetId)) errors.push('SHEET_ID has invalid characters');
+    if (!gid && !tab) errors.push('SHEET_GID (or a SHEET_URL containing gid=) or SHEET_TAB is required');
+    if (gid && !/^\d+$/.test(gid)) errors.push('SHEET_GID must be numeric');
+  }
+  const xlsxPath = type === 'xlsx' ? need('XLSX_PATH') : '';
+  if (xlsxPath && !/\.xlsx$/i.test(xlsxPath)) errors.push('XLSX_PATH must point to an .xlsx file');
 
   const columns = {
     emails: col('COL_EMAILS', 'G'), subject: col('COL_SUBJECT', 'H'), body: col('COL_BODY', 'I'),
@@ -59,8 +69,11 @@ export function loadConfig(env = process.env) {
     port: int('PORT', 3000, 1, 65535),
     host: get('HOST', '127.0.0.1'),
     apiKeys: keys,
-    google: { clientId: need('GOOGLE_CLIENT_ID'), clientSecret: need('GOOGLE_CLIENT_SECRET'), refreshToken: need('GOOGLE_REFRESH_TOKEN') },
-    sheet: { id: sheetId, gid: gid || null, tab: tab || null, headerRows: int('HEADER_ROWS', 1, 0, 100) },
+    source: { type, path: xlsxPath ? resolve(xlsxPath) : null, sheetName: get('XLSX_SHEET') || null },
+    google: google
+      ? { clientId: need('GOOGLE_CLIENT_ID'), clientSecret: need('GOOGLE_CLIENT_SECRET'), refreshToken: need('GOOGLE_REFRESH_TOKEN') }
+      : null,
+    sheet: { id: sheetId || null, gid: gid || null, tab: tab || null, headerRows: int('HEADER_ROWS', 1, 0, 100) },
     columns,
     // Defence in depth: refuse job claims closer together than this, whatever the client does.
     minClaimIntervalSec: int('MIN_CLAIM_INTERVAL_SEC', 300, 0, 86400),

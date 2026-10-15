@@ -5,7 +5,7 @@ import { createSheetsClient, SheetsError } from '../src/sheets-client.js';
 import { loadConfig } from '../src/config.js';
 
 const cfg = () => loadConfig({
-  API_KEYS: 'abcdefghijklmnop1234', SHEET_URL: 'https://docs.google.com/spreadsheets/d/SHEETID/edit?gid=42',
+  DATA_SOURCE: 'google', API_KEYS: 'abcdefghijklmnop1234', SHEET_URL: 'https://docs.google.com/spreadsheets/d/SHEETID/edit?gid=42',
   GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'sec', GOOGLE_REFRESH_TOKEN: 'rt',
 });
 const json = (status, body) => ({ ok: status >= 200 && status < 300, status, json: async () => body });
