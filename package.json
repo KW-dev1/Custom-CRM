@@ -5,11 +5,17 @@
   "type": "module",
   "description": "Custom CRM system: Chrome extension (Outlook Web automation), Node.js backend, Google Sheets as database.",
   "scripts": {
-    "test": "node --test extension/tests/",
+    "test": "node --test \"extension/tests/*.test.js\" \"backend/tests/*.test.js\"",
     "check": "node scripts/check-syntax.mjs",
-    "icons": "node scripts/make-icons.mjs"
+    "icons": "node scripts/make-icons.mjs",
+    "test:extension": "node --test \"extension/tests/*.test.js\"",
+    "test:backend": "npm test --workspace backend",
+    "start:backend": "npm start --workspace backend"
   },
   "devDependencies": {
     "jsdom": "^26.1.0"
-  }
+  },
+  "workspaces": [
+    "backend"
+  ]
 }

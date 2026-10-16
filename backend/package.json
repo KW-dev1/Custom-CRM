@@ -1,0 +1,20 @@
+{
+  "name": "custom-crm-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Email job API backed by a Google Sheet (G=emails, H=subject, I=body, J=status).",
+  "engines": {
+    "node": ">=20"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/index.js",
+    "auth": "node --env-file-if-exists=.env scripts/auth.js",
+    "test": "node --test \"tests/*.test.js\""
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "express": "^4.21.2"
+  }
+}
