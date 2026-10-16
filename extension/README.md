@@ -55,8 +55,9 @@ On **Save**, Chrome asks for permission to contact *only* the backend origin you
 Popup statuses: *Not configured, Waiting for Outlook, Ready, Processing email, Email sent, Failed,
 Needs review, Paused*. **Email sent** is shown only after Outlook gave positive evidence.
 
-Automation **pauses itself** after a *needs review* result, an authentication failure, or 3 failures
-in a row.
+Automation **pauses itself** after several problems in a row (*failed* or *needs review* results; default 3, set in
+*Advanced*; a sent email resets the count), an authentication failure, or a permanently refused result. A single unclear
+result does not stop the queue, and nothing is ever resent automatically.
 
 ## Backend API contract
 

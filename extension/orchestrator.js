@@ -83,11 +83,13 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
     const rt = await store.getRuntime();
     const patch = { lastFinishedAt: t };
     let paused = false;
-    if (status === STATUS.SENT) patch.consecutiveFailures = 0;
-    else if (status === STATUS.NEEDS_REVIEW) { patch.running = false; paused = true; }
-    else {
+    if (status === STATUS.SENT) {
+      patch.consecutiveFailures = 0;
+    } else {
+      // failed and needs_review both count as a "problem". One unclear result must not stop the queue; only
+      // several in a row do (a sent email resets the count). An unclear result is never resent either way.
       patch.consecutiveFailures = (rt.consecutiveFailures || 0) + 1;
-      if (patch.consecutiveFailures >= cfg.pauseAfterFailures) { patch.running = false; paused = true; }
+      if (patch.consecutiveFailures >= (settings.pauseAfterProblems || cfg.pauseAfterFailures)) { patch.running = false; paused = true; }
     }
     await store.patchRuntime(patch);
     await log({ jobId: job.id, stage: 'finalize', ok: status === STATUS.SENT, category: status === STATUS.SENT ? null : status, message });
@@ -95,7 +97,7 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
     const flushed = await flushPending(settings);
     if (flushed === 'dropped') return; // flushPending already explained it in the status and paused
     const reported = flushed === 'ok';
-    const suffix = (paused ? ' Automation paused: review before restarting.' : '') + (reported ? '' : ' (not yet reported to backend)');
+    const suffix = (paused ? ` Automation paused after ${patch.consecutiveFailures} problem(s) in a row: review them, then press Start.` : '') + (reported ? '' : ' (not yet reported to backend)');
     if (status === STATUS.SENT) await setStatus(UI_STATUS.SENT, `Email sent (verified). ${message}${suffix}`);
     else if (status === STATUS.NEEDS_REVIEW) await setStatus(UI_STATUS.NEEDS_REVIEW, `${message}${suffix}`);
     else await setStatus(UI_STATUS.FAILED, `${message}${suffix}`);

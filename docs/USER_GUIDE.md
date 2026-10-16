@@ -277,7 +277,7 @@ The coloured badge at the top shows the state:
 | Processing email | A send is in progress. |
 | Email sent | The last email was **verified** as sent. (Never shown unless verified.) |
 | Failed | The last job failed **before sending**; the reason is shown. |
-| Needs review | Send was clicked but the result could not be confirmed. **Check Sent Items.** Automation paused. |
+| Needs review | Send was clicked but the result could not be confirmed. **Check Sent Items.** Automation keeps going unless this repeats (see *Automatic safety stops*). |
 | Paused | Stopped by you, disabled, or paused automatically after a problem. |
 
 ## 7. Your first test
@@ -304,7 +304,7 @@ If anything fails, jump to [Troubleshooting](#11-troubleshooting).
 - [ ] The backend is running (terminal open, `/health` works).
 - [ ] The Excel file is **closed**; H and I are filled for the rows you want sent; J is empty for them.
 - [ ] Chrome is running, with an Outlook tab open, **signed in**, **no draft open**, and the tab not minimized or sleeping.
-- [ ] The popup shows **Automation enabled** ticked; press **Start**.
+- [ ] The popup shows **Automation enabled** ticked; press **Start** (it turns grey while running; **Stop** turns red and becomes the active button).
 - [ ] `MIN_CLAIM_INTERVAL_SEC` is back to `300` (or higher) for real use.
 
 ### What to expect
@@ -323,14 +323,17 @@ If anything fails, jump to [Troubleshooting](#11-troubleshooting).
 
 ### Automatic safety stops
 
-Automation **pauses itself** (badge: Paused or Needs review) when:
+One unclear or failed email does **not** stop the queue: the extension carries on with the next row at the normal interval, until the
+Status column has nothing left to send (then it keeps checking every 10-20 minutes for rows you add later).
 
-- an email ends as **`needs_review`** (unconfirmed);
+Automation **pauses itself** (badge: Paused) only when:
+
+- **3 problems happen in a row**: a "problem" is a `failed` or `needs_review` result; **a sent email resets the count**.
+  Change the number in the popup: *Advanced > Pause automation after this many problems in a row* (1-20, default 3);
 - the backend rejects the API key;
-- **3 failures in a row** occur;
 - the backend permanently refuses a result.
 
-It never resends an email on its own after any of these.
+It **never resends** an email on its own, whatever happens. Rows marked `needs_review` need a look in Sent Items afterwards.
 
 ### Requeue and resend
 

@@ -48,3 +48,9 @@ test('profile name: optional, trimmed, and restricted (no email addresses)', () 
     assert.ok(validateSettings({ ...goodSettings(), profileName: bad }).errors.profileName, bad);
   }
 });
+
+test('pauseAfterProblems: default 3, whole number 1-20', () => {
+  assert.equal(normalizeSettings(goodSettings()).pauseAfterProblems, 3);
+  assert.equal(validateSettings({ ...goodSettings(), pauseAfterProblems: 5 }).ok, true);
+  for (const bad of [0, 21, 2.5, 'abc']) assert.ok(validateSettings({ ...goodSettings(), pauseAfterProblems: bad }).errors.pauseAfterProblems, String(bad));
+});

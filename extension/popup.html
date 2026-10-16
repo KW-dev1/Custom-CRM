@@ -79,6 +79,9 @@
         </div>
         <small class="err" id="err-fetchMinMinutes"></small>
         <small class="err" id="err-fetchMaxMinutes"></small>
+        <label>Pause automation after this many problems in a row <input id="pauseAfterProblems" type="number" min="1" max="20"></label>
+        <small class="muted">Problems are failed or needs-review results. A sent email resets the count. Default 3.</small>
+        <small class="err" id="err-pauseAfterProblems"></small>
         <label>Status values (JSON) <textarea id="statusValues" rows="4" spellcheck="false"></textarea></label>
         <small class="err" id="err-statusValues"></small>
       </details>
