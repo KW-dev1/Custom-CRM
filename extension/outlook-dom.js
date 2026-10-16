@@ -23,6 +23,7 @@
     send: ['button[aria-label="Send"]', 'button[title="Send"]'],
     signedOut: ['input[name="loginfmt"]', 'a[data-task="signin"]', 'a[href*="login.live.com"]'],
     mailShell: ['[role="main"]', '[aria-label="Navigation pane"]', '[aria-label="Mail"]'],
+    messageList: ['[role="listbox"][aria-label="Message list"]'],
     banners: ['[role="alert"]', '[role="alertdialog"]', '[role="dialog"]'],
     toasts: ['[role="status"]', '[role="alert"]', '[aria-live="polite"]', '[aria-live="assertive"]'],
   };
@@ -260,9 +261,69 @@
     return false;
   }
 
+
+  // ---- Sent Items confirmation (selectors verified against a real Outlook Web page) ----
+  const folderName = (el) => String(el.getAttribute('data-folder-name') || '').toLowerCase();
+  /** Folder tree entry, e.g. div[role=treeitem][data-folder-name="sent items"]. Appears in Favorites and under the account. */
+  const findFolder = (doc, name) => Array.from(doc.querySelectorAll('[role="treeitem"][data-folder-name]')).find((el) => isVisible(el) && folderName(el) === name) || null;
+  const findSelectedFolder = (doc) => Array.from(doc.querySelectorAll('[role="treeitem"][data-folder-name][aria-selected="true"]')).find(isVisible) || null;
+  const isFolderSelected = (doc, name) => Array.from(doc.querySelectorAll('[role="treeitem"][data-folder-name][aria-selected="true"]')).some((el) => isVisible(el) && folderName(el) === name);
+
+  /** Rows of the message list: label = "<recipient> <subject> <time> <preview>", plus the time span (title holds the full date). */
+  function readMessageRows(doc) {
+    const list = first(doc, SELECTORS.messageList);
+    if (!list) return [];
+    return Array.from(list.querySelectorAll('[role="option"]')).filter(isVisible).map((row) => {
+      const timeSpan = Array.from(row.querySelectorAll('span')).find((sp) => /\d{1,2}:\d{2}/.test(sp.getAttribute('title') || '') || /^\d{1,2}:\d{2}(\s?[AP]M)?$/i.test((sp.textContent || '').trim()));
+      return {
+        label: (row.getAttribute('aria-label') || row.textContent || '').trim(),
+        timeTitle: timeSpan ? timeSpan.getAttribute('title') || '' : '',
+        timeText: timeSpan ? (timeSpan.textContent || '').trim() : '',
+      };
+    });
+  }
+
+  /** Row timestamp in ms, or null. Prefers the full date in the span title; falls back to today's clock text. */
+  function parseRowTime(info, nowMs) {
+    const full = Date.parse(info.timeTitle);
+    // A parse that lands far from "now" is a day/month locale mix-up: ignore it and use the clock text.
+    if (!Number.isNaN(full) && Math.abs(full - nowMs) < 36 * 3600 * 1000) return full;
+    const m = /^(\d{1,2}):(\d{2})\s*([AP]M)?$/i.exec(info.timeText || '');
+    if (!m) return null;
+    let h = Number(m[1]);
+    const ap = m[3] && m[3].toUpperCase();
+    if (ap === 'PM' && h < 12) h += 12;
+    if (ap === 'AM' && h === 12) h = 0;
+    const d = new Date(nowMs);
+    d.setHours(h, Number(m[2]), 0, 0);
+    return d.getTime();
+  }
+
+  const normText = (t) => String(t).toLowerCase().replace(/\s+/g, ' ').trim();
+  /**
+   * Find the row for the message we just sent: same subject, sent within the last few minutes
+   * (Outlook shows minutes only, so a one-minute margin either side), and, when the row shows an
+   * email address rather than a contact's display name, the same recipient.
+   */
+  function matchSentRow(rows, { subject, to, sentAtMs, nowMs }) {
+    const subj = normText(subject);
+    const addr = String(to).toLowerCase();
+    const from = sentAtMs - (sentAtMs % 60000) - 60000;
+    for (const r of rows) {
+      const label = normText(r.label);
+      if (!label.includes(subj)) continue;
+      if (label.includes('@') && !label.includes(addr)) continue;
+      const t = parseRowTime(r, nowMs);
+      if (t === null || t < from || t > nowMs + 60000) continue;
+      return r;
+    }
+    return null;
+  }
+
   Object.assign(OEA, {
     MAIL_PREFIX, OEAError, SELECTORS, isVisible, lowestCommonAncestor, findNewMail, findSubject, findCc, findCcToggle, countCompose, findCompose,
     detectReadiness, waitFor, extractText, squash, setInputValue, setEditableText, appendEditableText, pressKey, findRecipientPill,
     findSendError, findRecipientError, findSentToast,
+    findFolder, findSelectedFolder, isFolderSelected, readMessageRows, parseRowTime, matchSentRow,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : window);

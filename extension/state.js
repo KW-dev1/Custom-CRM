@@ -57,6 +57,7 @@ export const STAGE = Object.freeze({
   VALIDATING: 'validating',
   SEND_CLICKING: 'send_clicking',
   VERIFYING: 'verifying',
+  VERIFYING_SENT_ITEMS: 'verifying_sent_items',
   DONE: 'done',
 });
 const PRE_SEND = new Set([STAGE.STARTED, STAGE.CHECKING_READY, STAGE.OPENING_COMPOSE, STAGE.FILLING, STAGE.VALIDATING]);

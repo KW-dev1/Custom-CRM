@@ -9,6 +9,9 @@
 //    (clear the cell by hand to requeue, after checking Outlook's Sent Items if unsure).
 //  * Final statuses are terminal: a repeat of the same status is idempotent, a different one is a conflict.
 //  * Every operation runs under one in-process lock. Run exactly ONE backend instance per sheet.
+//  * Several extension profiles (one Outlook account each) can share the backend: each claim records the
+//    claiming profile in the sender column, pacing is tracked per profile, and a result is accepted
+//    only from the profile that claimed the row.
 
 import { hasContent, rowToJob, rowHash, parseJobId } from './rows.js';
 
@@ -41,7 +44,7 @@ export function createJobService({ sheet, cfg, now = Date.now, log = () => {} })
     chain = run.catch(() => {});
     return run;
   };
-  let lastClaimAt = 0;
+  const lastClaimBy = new Map(); // profile name -> time of its last claim
 
   async function locate({ rowNumber, hash }) {
     const row = await sheet.readRow(rowNumber);
@@ -57,9 +60,10 @@ export function createJobService({ sheet, cfg, now = Date.now, log = () => {} })
 
   return {
     /** @returns the next job (and marks its row pending), or null when nothing is waiting. */
-    claimNext() {
+    claimNext(client = 'default') {
       return locked(async () => {
         const min = cfg.minClaimIntervalSec;
+        const lastClaimAt = lastClaimBy.get(client);
         if (lastClaimAt && min > 0) {
           const waited = (now() - lastClaimAt) / 1000;
           if (waited < min) throw new JobError('RATE_LIMITED', 'Jobs are released at a limited rate.', { status: 429, retryAfterSec: Math.ceil(min - waited) });
@@ -78,9 +82,10 @@ export function createJobService({ sheet, cfg, now = Date.now, log = () => {} })
             log('warn', 'row_invalid', { row: r.rowNumber, reason: mapped.error });
             continue;
           }
-          await sheet.writeStatus(r.rowNumber, labels.pending, note('claimed'));
-          lastClaimAt = now();
-          log('info', 'claimed', { row: r.rowNumber, jobId: mapped.job.id, cc: mapped.job.cc.length });
+          await sheet.writeStatus(r.rowNumber, labels.pending, note(`claimed by ${client}`), { sender: client });
+          if (lastClaimBy.size > 1000) lastClaimBy.clear();
+          lastClaimBy.set(client, now());
+          log('info', 'claimed', { row: r.rowNumber, jobId: mapped.job.id, cc: mapped.job.cc.length, client });
           return mapped.job;
         }
         if (skipped) log('info', 'rows_incomplete', { count: skipped });
@@ -89,13 +94,17 @@ export function createJobService({ sheet, cfg, now = Date.now, log = () => {} })
     },
 
     /** Record a result reported by the extension. Idempotent for repeated identical reports. */
-    report(id, status, message = '') {
+    report(id, status, message = '', client = 'default') {
       return locked(async () => {
         const parsed = parseJobId(id);
         if (!parsed) throw new JobError('BAD_JOB_ID', 'Malformed job id.', { status: 400 });
         if (!REPORTABLE.includes(status)) throw new JobError('BAD_STATUS', `Status must be one of: ${REPORTABLE.join(', ')}.`, { status: 400 });
         const row = await locate(parsed);
         const current = canonical(row.status);
+        if (cfg.columns.sender && row.sender && row.sender !== client) {
+          log('warn', 'wrong_client', { row: row.rowNumber, claimedBy: row.sender, client });
+          throw new JobError('WRONG_CLIENT', `This job was claimed by "${row.sender}", not "${client}".`, { status: 409 });
+        }
 
         if (status === 'processing') {
           if (current === 'empty') throw new JobError('NOT_CLAIMED', 'This job has not been claimed.', { status: 409 });

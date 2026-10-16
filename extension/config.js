@@ -31,6 +31,7 @@ export const UI_STATUS = Object.freeze({
 export const DEFAULT_SETTINGS = Object.freeze({
   apiBaseUrl: '',
   apiKey: '',
+  profileName: '', // names this Chrome profile / Outlook account to the backend (X-Client-Id); empty = "default"
   authHeader: 'Authorization',
   authScheme: 'Bearer', // set to '' to send the raw key in the header
   claimPath: '/api/email-jobs/claim',
@@ -41,12 +42,15 @@ export const DEFAULT_SETTINGS = Object.freeze({
   statusValues: { ...DEFAULT_STATUS_VALUES },
   fetchMinMinutes: 10, // the backend is asked for one job at a random time between min and max minutes
   fetchMaxMinutes: 20,
+  verifySentItems: true, // after Send, confirm the message is listed in Sent Items (stricter, ~10 s per email)
   enabled: false,
 });
 
+export const PROFILE_NAME_RE = /^[A-Za-z0-9 ._-]{1,40}$/;
+
 export function normalizeSettings(raw = {}) {
   const s = { ...DEFAULT_SETTINGS, ...raw };
-  for (const k of ['apiBaseUrl', 'apiKey', 'authHeader', 'authScheme', 'claimPath', 'statusPath', 'jobStatePath']) {
+  for (const k of ['apiBaseUrl', 'apiKey', 'profileName', 'authHeader', 'authScheme', 'claimPath', 'statusPath', 'jobStatePath']) {
     s[k] = typeof s[k] === 'string' ? s[k].trim() : '';
   }
   s.apiBaseUrl = s.apiBaseUrl.replace(/\/+$/, '');
@@ -56,6 +60,7 @@ export function normalizeSettings(raw = {}) {
   s.fetchMinMinutes = Number(s.fetchMinMinutes);
   s.fetchMaxMinutes = Number(s.fetchMaxMinutes);
   s.enabled = Boolean(s.enabled);
+  s.verifySentItems = s.verifySentItems !== false;
   return s;
 }
 
@@ -81,6 +86,7 @@ export function validateSettings(input) {
     }
   }
   if (!s.apiKey) errors.apiKey = 'API key / token is required.';
+  if (s.profileName && !PROFILE_NAME_RE.test(s.profileName)) errors.profileName = 'Profile name: 1-40 letters, digits, spaces, dots, dashes or underscores (no email addresses).';
   if (s.authHeader && !/^[A-Za-z0-9-]+$/.test(s.authHeader)) errors.authHeader = 'Invalid header name.';
   if (!s.authHeader) errors.authHeader = 'Auth header name is required.';
   if (!s.claimPath.startsWith('/')) errors.claimPath = 'Claim path must start with "/".';

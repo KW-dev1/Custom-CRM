@@ -10,6 +10,8 @@ import { JobError, REPORTABLE } from './jobs.js';
 import { SheetsError } from './sheets-client.js';
 import { GoogleAuthError } from './google-auth.js';
 
+// Each extension profile (one Outlook account) names itself in X-Client-Id. No addresses allowed in the name.
+const CLIENT_RE = /^[A-Za-z0-9 ._-]{1,40}$/;
 const digest = (s) => createHash('sha256').update(String(s)).digest();
 
 export function createApp({ service, cfg, log = () => {}, now = Date.now }) {
@@ -54,8 +56,15 @@ export function createApp({ service, cfg, log = () => {}, now = Date.now }) {
   api.use(express.json({ limit: '20kb' }));
   const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res)).catch(next);
 
+  function clientOf(req) {
+    const raw = (req.get('x-client-id') || '').trim();
+    if (!raw) return 'default';
+    if (!CLIENT_RE.test(raw)) throw new JobError('BAD_CLIENT_ID', 'X-Client-Id must be 1-40 letters, digits, spaces, dots, dashes or underscores.', { status: 400 });
+    return raw;
+  }
+
   api.post('/email-jobs/claim', wrap(async (req, res) => {
-    const job = await service.claimNext();
+    const job = await service.claimNext(clientOf(req));
     if (!job) return res.status(204).end();
     return res.json({ job });
   }));
@@ -71,7 +80,7 @@ export function createApp({ service, cfg, log = () => {}, now = Date.now }) {
     if (body.message !== undefined && typeof body.message !== 'string') {
       throw new JobError('BAD_MESSAGE', 'message must be a string.', { status: 400 });
     }
-    const r = await service.report(req.params.id, body.status, (body.message || '').slice(0, 1000));
+    const r = await service.report(req.params.id, body.status, (body.message || '').slice(0, 1000), clientOf(req));
     res.json({ id: req.params.id, status: r.status, applied: r.applied });
   }));
 

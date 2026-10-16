@@ -15,7 +15,7 @@ test('parses sheet id and gid from the browser URL', () => {
 });
 test('valid env loads with defaults G/H/I/J', () => {
   const c = loadConfig(base());
-  assert.deepEqual(c.columns, { emails: 'G', subject: 'H', body: 'I', status: 'J', note: null });
+  assert.deepEqual(c.columns, { emails: 'G', subject: 'H', body: 'I', status: 'J', note: null, sender: 'L' });
   assert.equal(c.sheet.gid, '1793568655');
   assert.equal(c.minClaimIntervalSec, 300);
   assert.equal(c.statusLabels.pending, 'pending');
@@ -56,4 +56,12 @@ test('xlsx source needs a path to an .xlsx file; unknown sources are rejected', 
 });
 test('XLSX_SHEET is optional', () => {
   assert.equal(loadConfig({ API_KEYS: 'abcdefghijklmnop1234', XLSX_PATH: 'a.xlsx', XLSX_SHEET: 'sheet1' }).source.sheetName, 'sheet1');
+});
+
+test('sender column defaults to L, can be disabled, and must differ from the others', () => {
+  const env = { API_KEYS: 'abcdefghijklmnop1234', XLSX_PATH: 'a.xlsx' };
+  assert.equal(loadConfig(env).columns.sender, 'L');
+  assert.equal(loadConfig({ ...env, COL_SENDER: '' }).columns.sender, null);
+  assert.equal(loadConfig({ ...env, COL_SENDER: 'M' }).columns.sender, 'M');
+  assert.throws(() => loadConfig({ ...env, COL_NOTE: 'L' }), /different/);
 });

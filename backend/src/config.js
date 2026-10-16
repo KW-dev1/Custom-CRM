@@ -61,6 +61,8 @@ export function loadConfig(env = process.env) {
   const columns = {
     emails: col('COL_EMAILS', 'G'), subject: col('COL_SUBJECT', 'H'), body: col('COL_BODY', 'I'),
     status: col('COL_STATUS', 'J'), note: col('COL_NOTE', '', true),
+    // Which extension profile (Outlook account) claimed the row. Set to empty to disable.
+    sender: col('COL_SENDER', 'L', true),
   };
   const used = Object.values(columns).filter(Boolean);
   if (new Set(used).size !== used.length) errors.push('Column settings must all be different');

@@ -48,6 +48,10 @@ chrome.alarms.onAlarm.addListener((a) => {
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (sender.id !== chrome.runtime.id) return false; // ignore other extensions / pages
+  if (msg && msg.type === 'OEA_CLEAR_HISTORY') {
+    orchestrator.clearHistory().then(sendResponse, () => sendResponse({ ok: false, reason: 'Unexpected error.' }));
+    return true; // async response
+  }
   const run = {
     OEA_START: () => orchestrator.start(),
     OEA_STOP: () => orchestrator.stop(),

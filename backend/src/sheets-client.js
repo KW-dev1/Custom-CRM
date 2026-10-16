@@ -64,7 +64,7 @@ export function createSheetsClient({ cfg, auth, fetchImpl = globalThis.fetch, sl
 
   const toRow = (cells, rowNumber) => {
     const c = (col) => (col ? String(cells[at(col)] ?? '') : '');
-    return { rowNumber, emails: c(columns.emails), subject: c(columns.subject), body: c(columns.body), status: c(columns.status), note: c(columns.note) };
+    return { rowNumber, emails: c(columns.emails), subject: c(columns.subject), body: c(columns.body), status: c(columns.status), note: c(columns.note), sender: c(columns.sender) };
   };
 
   return {
@@ -84,11 +84,12 @@ export function createSheetsClient({ cfg, auth, fetchImpl = globalThis.fetch, sl
       return toRow((data.values && data.values[0]) || [], rowNumber);
     },
     /** Write the status (and optional note) cell(s). RAW input: values are never parsed as formulas. */
-    async writeStatus(rowNumber, status, note) {
+    async writeStatus(rowNumber, status, note, extra = {}) {
       if (!Number.isInteger(rowNumber) || rowNumber <= cfg.sheet.headerRows) throw new SheetsError('Refusing to write to a header or invalid row.');
       const tab = await getTab();
       const data = [{ range: `${quoteTab(tab)}!${columns.status}${rowNumber}`, values: [[status]] }];
       if (columns.note && note !== undefined) data.push({ range: `${quoteTab(tab)}!${columns.note}${rowNumber}`, values: [[note]] });
+      if (columns.sender && extra.sender !== undefined) data.push({ range: `${quoteTab(tab)}!${columns.sender}${rowNumber}`, values: [[extra.sender]] });
       await request('/values:batchUpdate', { method: 'POST', body: { valueInputOption: 'RAW', data } });
     },
   };

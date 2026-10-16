@@ -279,3 +279,81 @@ test('a claim error retries soon (not after a full 10-20 min window)', async () 
   const rt = await e.store.getRuntime();
   assert.ok(rt.nextClaimAt - 1_000_000 <= 60000);
 });
+
+test('a job that previously FAILED (never sent) is retried when it is claimed again', async () => {
+  const e = setup({ sendResult: { outcome: 'sent', sendClicked: true, evidence: 'compose window closed' },
+    stored: { completed: { job_1: { status: 'failed', at: 1 } } } });
+  const r = await e.orch.tick();
+  assert.deepEqual(r, { state: 'processed', status: 'sent' });
+  assert.equal(e.calls.send.filter((m) => m.type === 'OEA_SEND_JOB').length, 1);
+  assert.equal((await e.store.getCompletedMap()).job_1.status, 'sent', 'the record is updated to the new outcome');
+});
+test('previously SENT or NEEDS_REVIEW jobs are still blocked from being sent again', async () => {
+  for (const status of ['sent', 'needs_review']) {
+    const e = setup({ sendResult: { outcome: 'sent', evidence: 'x' }, stored: { completed: { job_1: { status, at: 1 } } } });
+    assert.equal((await e.orch.tick()).state, 'duplicate', status);
+    assert.equal(e.calls.send.filter((m) => m.type === 'OEA_SEND_JOB').length, 0, status);
+    assert.equal(e.calls.reports.at(-1).status, status);
+  }
+});
+test('retry after failure that fails again keeps the record as failed', async () => {
+  const e = setup({ sendResult: { outcome: 'failed', sendClicked: false, message: 'still no recipient' },
+    stored: { completed: { job_1: { status: 'failed', at: 1 } } } });
+  await e.orch.tick();
+  assert.equal((await e.store.getCompletedMap()).job_1.status, 'failed');
+  assert.equal(e.calls.reports.at(-1).status, 'failed');
+});
+
+test('clearHistory lets a previously sent row be sent again on purpose', async () => {
+  const e = setup({ sendResult: { outcome: 'sent', evidence: 'x' }, stored: { completed: { job_1: { status: 'sent', at: 1 } } } });
+  assert.equal((await e.orch.tick()).state, 'duplicate');
+  assert.deepEqual(await e.orch.clearHistory(), { ok: true });
+  assert.deepEqual(await e.store.getCompletedMap(), {});
+  e.advance(11 * MIN);
+  assert.equal((await e.orch.tick()).status, 'sent');
+  assert.equal(e.calls.send.filter((m) => m.type === 'OEA_SEND_JOB').length, 1);
+});
+test('clearHistory is refused while a job is in flight or a report is pending', async () => {
+  const busy = setup({ stored: { run: { jobId: 'x', phase: 'sending', startedAt: 1, updatedAt: 1 }, completed: { a: { status: 'sent', at: 1 } } } });
+  const r1 = await busy.orch.clearHistory();
+  assert.equal(r1.ok, false);
+  assert.ok((await busy.store.getCompletedMap()).a, 'history untouched');
+  const pending = setup({ stored: { pendingReport: { jobId: 'x', status: 'sent' }, completed: { a: { status: 'sent', at: 1 } } } });
+  assert.equal((await pending.orch.clearHistory()).ok, false);
+});
+
+test('the Sent Items setting is passed to the Outlook tab with the job (default on)', async () => {
+  const e = setup({ sendResult: { outcome: 'sent', evidence: 'x' } });
+  await e.orch.tick();
+  assert.deepEqual(e.calls.send.find((m) => m.type === 'OEA_SEND_JOB').options, { verifySentItems: true });
+});
+test('...and can be turned off', async () => {
+  const e = setup({ sendResult: { outcome: 'sent', evidence: 'x' } });
+  await e.area.set({ settings: { apiBaseUrl: 'https://api.example.com', apiKey: 'k-12345', enabled: true, verifySentItems: false } });
+  await e.orch.tick();
+  assert.deepEqual(e.calls.send.find((m) => m.type === 'OEA_SEND_JOB').options, { verifySentItems: false });
+});
+test('uncertain Sent Items result from the page becomes needs_review and pauses', async () => {
+  const e = setup({ sendResult: { outcome: 'uncertain', sendClicked: true, code: 'SENT_ITEMS_NOT_FOUND', message: 'not found in Sent Items' } });
+  await e.orch.tick();
+  assert.equal(e.calls.reports.at(-1).status, 'needs_review');
+  assert.equal((await e.store.getRuntime()).running, false);
+});
+
+test('a permanently refused report (409) does not block the extension forever, never resends, and pauses', async () => {
+  const e = setup({ sendResult: { outcome: 'sent', evidence: 'x' } });
+  const refuse = Object.assign(new ApiError('client', 'Backend rejected the request (HTTP 409).', { status: 409 }));
+  e.orch = (await import('../orchestrator.js')).createOrchestrator({
+    store: e.store, now: () => 1_000_000 + e.clockOffset, logger: { log: async () => {} }, scheduleNext: () => {}, random: () => 0,
+    api: { claimJob: async () => { e.calls.claim++; return goodJob(); }, getJobState: async () => null, validateJob,
+      reportStatus: async (_s, r) => { if (r.status === 'processing') return; throw refuse; } },
+    tabs: { findOutlookTab: async () => e.tab, send: async (_i, m) => (m.type === 'OEA_CHECK_READY' ? { state: 'ready' } : { outcome: 'sent', evidence: 'x' }) },
+  });
+  e.clockOffset = 0;
+  await e.orch.tick();
+  assert.equal(await e.store.getPendingReport(), null, 'not retried forever');
+  assert.equal(await e.store.getRun(), null);
+  assert.equal((await e.store.getRuntime()).running, false);
+  assert.equal((await e.store.getCompletedMap()).job_1.status, 'sent', 'local record kept: never resent');
+  assert.match((await e.store.getStatus()).message, /refused the result/);
+});

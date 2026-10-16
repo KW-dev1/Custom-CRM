@@ -32,16 +32,28 @@
   </section>
 
   <section>
+    <h2>Job history</h2>
+    <p class="muted small">The extension remembers jobs it already sent so it never sends one twice. If you cleared a row's status on purpose to send it again (after checking Outlook's Sent Items), clear this memory first.</p>
+    <div class="buttons"><button id="clearHistory" type="button">Clear job history</button></div>
+    <small id="historyMsg" role="status"></small>
+  </section>
+
+  <section>
     <h2>Settings</h2>
     <form id="form" novalidate>
       <label>Backend API base URL
         <input id="apiBaseUrl" type="url" placeholder="https://api.example.com" autocomplete="off">
         <small class="err" id="err-apiBaseUrl"></small>
       </label>
+      <label>Profile name <small class="muted">(this Chrome profile / Outlook account, e.g. outlook-A)</small>
+        <input id="profileName" type="text" maxlength="40" placeholder="outlook-A" autocomplete="off">
+        <small class="err" id="err-profileName"></small>
+      </label>
       <label>API key / token
         <input id="apiKey" type="password" autocomplete="off">
         <small class="err" id="err-apiKey"></small>
       </label>
+      <label class="check"><input id="verifySentItems" type="checkbox"> Confirm each send in Sent Items <small class="muted">(stricter: reports <em>sent</em> only if the message is listed there; adds ~10 s per email)</small></label>
       <details>
         <summary>Advanced (API contract placeholders)</summary>
         <div class="row">

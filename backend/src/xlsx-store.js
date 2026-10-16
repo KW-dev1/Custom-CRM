@@ -54,6 +54,7 @@ export function createXlsxStore({ cfg, now = Date.now }) {
   const toRow = (ws, n) => ({
     rowNumber: n, emails: text(ws, n, columns.emails), subject: text(ws, n, columns.subject),
     body: text(ws, n, columns.body), status: text(ws, n, columns.status), note: text(ws, n, columns.note),
+    sender: text(ws, n, columns.sender),
   });
 
   async function assertNotOpenElsewhere() {
@@ -79,7 +80,8 @@ export function createXlsxStore({ cfg, now = Date.now }) {
       const { ws } = await load();
       return toRow(ws, n);
     },
-    async writeStatus(n, status, note) {
+    /** extra.sender: name of the extension profile that claimed the row (written when a sender column is configured). */
+    async writeStatus(n, status, note, extra = {}) {
       if (!Number.isInteger(n) || n <= headerRows) throw new SheetsError('Refusing to write to a header or invalid row.');
       await assertNotOpenElsewhere();
       if (!backedUp) {
@@ -90,6 +92,7 @@ export function createXlsxStore({ cfg, now = Date.now }) {
       const { wb, ws } = await load();
       ws.getCell(`${columns.status}${n}`).value = String(status); // plain string: never a formula
       if (columns.note && note !== undefined) ws.getCell(`${columns.note}${n}`).value = String(note);
+      if (columns.sender && extra.sender !== undefined) ws.getCell(`${columns.sender}${n}`).value = String(extra.sender);
       const tmp = `${file}.${process.pid}.tmp`;
       try {
         await wb.xlsx.writeFile(tmp);

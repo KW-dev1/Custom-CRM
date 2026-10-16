@@ -8,7 +8,7 @@ import {
   PHASE, startRun, advanceRun, getCompleted, recordCompleted, classifyInterrupted, resultToReport, STAGE,
 } from './state.js';
 
-const DEFAULTS = { sendTimeoutMs: 100000, staleMs: 120000, pollSec: 60, pauseAfterFailures: 3 };
+const DEFAULTS = { sendTimeoutMs: 180000, staleMs: 120000, pollSec: 60, pauseAfterFailures: 3 };
 const NO_RECEIVER = /receiving end does not exist|could not establish connection/i;
 
 const withTimeout = (p, ms) => new Promise((resolve, reject) => {
@@ -37,25 +37,37 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
     await store.patchRuntime({ running: false });
   }
 
+  /** @returns 'ok' (delivered or nothing pending) | 'pending' (will retry) | 'dropped' (permanently refused) */
   async function flushPending(settings) {
     const p = await store.getPendingReport();
-    if (!p) return true;
+    if (!p) return 'ok';
+    const cleanup = async () => {
+      await store.clearPendingReport();
+      const run = await store.getRun();
+      if (run && run.jobId === p.jobId) {
+        await store.clearRun();
+        await store.clearInflight();
+      }
+    };
     try {
       await api.reportStatus(settings, p);
     } catch (e) {
       await log({ jobId: p.jobId, stage: 'report', ok: false, category: e.kind || 'unknown', message: e.message });
       if (e.kind === 'auth') await pauseAutomation();
+      if (e.kind === 'client') {
+        // A permanent 4xx (e.g. the row was claimed by another profile or edited). Retrying forever would block
+        // every later job, so stop, keep the local record (the email is never resent) and ask for attention.
+        await cleanup();
+        await pauseAutomation();
+        await setStatus(UI_STATUS.FAILED, `The backend refused the result for the last job (${e.message}). Your local record is kept and the email will not be resent. Automation paused; check the sheet, then press Start.`);
+        return 'dropped';
+      }
       await setStatus(UI_STATUS.FAILED, `Result for the last job is saved locally but could not be reported: ${e.message} Will retry before taking new jobs.`);
-      return false;
+      return 'pending';
     }
-    await store.clearPendingReport();
-    const run = await store.getRun();
-    if (run && run.jobId === p.jobId) {
-      await store.clearRun();
-      await store.clearInflight();
-    }
+    await cleanup();
     await log({ jobId: p.jobId, stage: 'report', ok: true, message: p.status });
-    return true;
+    return 'ok';
   }
 
   async function finalize(settings, job, status, message) {
@@ -80,7 +92,9 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
     await store.patchRuntime(patch);
     await log({ jobId: job.id, stage: 'finalize', ok: status === STATUS.SENT, category: status === STATUS.SENT ? null : status, message });
 
-    const reported = await flushPending(settings);
+    const flushed = await flushPending(settings);
+    if (flushed === 'dropped') return; // flushPending already explained it in the status and paused
+    const reported = flushed === 'ok';
     const suffix = (paused ? ' Automation paused: review before restarting.' : '') + (reported ? '' : ' (not yet reported to backend)');
     if (status === STATUS.SENT) await setStatus(UI_STATUS.SENT, `Email sent (verified). ${message}${suffix}`);
     else if (status === STATUS.NEEDS_REVIEW) await setStatus(UI_STATUS.NEEDS_REVIEW, `${message}${suffix}`);
@@ -120,7 +134,9 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
       return { state: 'paused' };
     }
 
-    if (!(await flushPending(settings))) { scheduleNext(cfg.pollSec); return { state: 'report_pending' }; }
+    const flushed = await flushPending(settings);
+    if (flushed === 'dropped') return { state: 'report_refused' };
+    if (flushed === 'pending') { scheduleNext(cfg.pollSec); return { state: 'report_pending' }; }
 
     const run = await store.getRun();
     if (run) {
@@ -186,8 +202,12 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
       return { state: 'invalid_job' };
     }
 
+    // Only outcomes that may have SENT the email block a re-claimed job. A 'failed' job provably never
+    // reached Send, so once the row is requeued (status cleared) it is safe, and expected, to try again.
     const prev = getCompleted(await store.getCompletedMap(), job.id);
-    if (prev) {
+    if (prev && prev.status === STATUS.FAILED) {
+      await log({ jobId: job.id, stage: 'retry', ok: true, message: 'Retrying a job that previously failed before sending.' });
+    } else if (prev) {
       await finalize(settings, job, prev.status, `Duplicate delivery: this job was already processed locally (${prev.status}). Not sending again.`);
       return { state: 'duplicate' };
     }
@@ -215,7 +235,7 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
     const stopKeepAlive = keepAlive();
     let rep;
     try {
-      const result = await withTimeout(tabs.send(tab.id, { type: 'OEA_SEND_JOB', job }), cfg.sendTimeoutMs);
+      const result = await withTimeout(tabs.send(tab.id, { type: 'OEA_SEND_JOB', job, options: { verifySentItems: settings.verifySentItems } }), cfg.sendTimeoutMs);
       rep = resultToReport(result);
     } catch (e) {
       const inflight = await store.getInflight();
@@ -249,6 +269,17 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
     async start() {
       await store.patchRuntime({ running: true, consecutiveFailures: 0, nextClaimAt: 0 });
       return this.tick();
+    },
+    /**
+     * Forget which jobs were already processed, so rows that were sent / needed review can be sent
+     * again on purpose (after the status cell is cleared). Refused while a job or report is in flight.
+     */
+    async clearHistory() {
+      if (await store.getRun()) return { ok: false, reason: 'A job is being processed right now. Try again in a minute.' };
+      if (await store.getPendingReport()) return { ok: false, reason: 'A result is still waiting to be reported to the backend.' };
+      await store.setCompletedMap({});
+      await log({ stage: 'clear_history', ok: true, message: 'Local job history cleared by the user.' });
+      return { ok: true };
     },
     async stop() {
       await store.patchRuntime({ running: false });

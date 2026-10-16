@@ -168,3 +168,57 @@ test('getState reflects the lifecycle', async () => {
   await svc.report(job.id, 'needs_review');
   assert.equal((await svc.getState(job.id)).status, 'needs_review');
 });
+
+// ---- several extension profiles sharing one backend ----
+test('two profiles claiming at the same moment never get the same row', async () => {
+  const { sheet, svc } = setup([lead(1), lead(2), lead(3), lead(4)]);
+  sheet.delay = 5;
+  const jobs = await Promise.all([svc.claimNext('outlook-A'), svc.claimNext('outlook-B'), svc.claimNext('outlook-A'), svc.claimNext('outlook-C')]);
+  assert.equal(new Set(jobs.map((j) => j.id)).size, 4);
+});
+test('the claiming profile is recorded in the sender column', async () => {
+  const { sheet, svc } = setup([lead(1), lead(2)]);
+  const a = await svc.claimNext('outlook-A');
+  const b = await svc.claimNext('outlook-B');
+  assert.equal(sheet.rows[0].sender, 'outlook-A');
+  assert.equal(sheet.rows[1].sender, 'outlook-B');
+  assert.match(sheet.rows[0].note, /claimed by outlook-A/);
+  await svc.report(a.id, 'sent', '', 'outlook-A');
+  assert.equal(sheet.rows[0].sender, 'outlook-A', 'a result does not change the sender');
+  assert.ok(b);
+});
+test('pacing is per profile: one profile claiming does not throttle another', async () => {
+  const { svc, clock } = setup([lead(1), lead(2), lead(3)], { MIN_CLAIM_INTERVAL_SEC: '300' });
+  await svc.claimNext('outlook-A');
+  assert.ok(await svc.claimNext('outlook-B'), 'B is unaffected by A');
+  await assert.rejects(svc.claimNext('outlook-A'), (e) => e.status === 429);
+  await assert.rejects(svc.claimNext('outlook-B'), (e) => e.status === 429);
+  clock.t += 301_000;
+  assert.ok(await svc.claimNext('outlook-A'));
+});
+test('only the profile that claimed a row may report its result', async () => {
+  const { sheet, svc } = setup([lead(1)]);
+  const job = await svc.claimNext('outlook-A');
+  await assert.rejects(svc.report(job.id, 'sent', '', 'outlook-B'), (e) => e.code === 'WRONG_CLIENT' && e.status === 409);
+  await assert.rejects(svc.report(job.id, 'processing', '', 'outlook-B'), (e) => e.code === 'WRONG_CLIENT');
+  assert.equal(sheet.rows[0].status, 'pending', 'nothing was written');
+  assert.equal((await svc.report(job.id, 'sent', '', 'outlook-A')).applied, true);
+  assert.equal((await svc.report(job.id, 'sent', '', 'outlook-A')).applied, false, 'idempotent for the owner');
+});
+test('rows without a recorded sender (older rows) can still be reported by anyone', async () => {
+  const { sheet, svc } = setup([lead(1, { status: 'pending' })]);
+  const id = (await import('../src/rows.js')).makeJobId(2, (await import('../src/rows.js')).rowHash(sheet.rows[0]));
+  assert.equal((await svc.report(id, 'sent', '', 'outlook-B')).applied, true);
+});
+test('with the sender column disabled there is no client check', async () => {
+  const { sheet, svc } = setup([lead(1)], { COL_SENDER: '' });
+  const job = await svc.claimNext('outlook-A');
+  assert.equal(sheet.rows[0].sender, 'outlook-A', 'the fake still records it, but the service does not enforce it');
+  assert.equal((await svc.report(job.id, 'sent', '', 'outlook-B')).applied, true);
+});
+test('profile name defaults to "default" and two default clients behave as one', async () => {
+  const { sheet, svc } = setup([lead(1)]);
+  const job = await svc.claimNext();
+  assert.equal(sheet.rows[0].sender, 'default');
+  assert.equal((await svc.report(job.id, 'sent')).applied, true);
+});

@@ -33,3 +33,18 @@ test('origin pattern', () => {
   assert.equal(backendOriginPattern('https://api.example.com/v1'), 'https://api.example.com/*');
   assert.equal(backendOriginPattern('nope'), null);
 });
+
+test('verifySentItems defaults to on and can be turned off', () => {
+  assert.equal(normalizeSettings(goodSettings()).verifySentItems, true);
+  assert.equal(normalizeSettings({ ...goodSettings(), verifySentItems: false }).verifySentItems, false);
+  assert.equal(normalizeSettings({ ...goodSettings(), verifySentItems: undefined }).verifySentItems, true);
+});
+
+test('profile name: optional, trimmed, and restricted (no email addresses)', () => {
+  assert.equal(validateSettings(goodSettings()).ok, true);
+  assert.equal(validateSettings({ ...goodSettings(), profileName: 'outlook-A' }).ok, true);
+  assert.equal(normalizeSettings({ ...goodSettings(), profileName: '  outlook-A  ' }).profileName, 'outlook-A');
+  for (const bad of ['me@outlook.com', 'a'.repeat(41), 'bad/name', 'x;y']) {
+    assert.ok(validateSettings({ ...goodSettings(), profileName: bad }).errors.profileName, bad);
+  }
+});

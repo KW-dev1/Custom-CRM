@@ -154,3 +154,20 @@ test('writes serialised through the job service land correctly on the real file'
   assert.equal(ws.getCell('J3').value, 'pending');
   await assert.rejects(access(`${file}.tmp`));
 });
+
+test('sender (profile name) is written to its column and read back', async () => {
+  const { file } = await makeBook();
+  const store = createXlsxStore({ cfg: cfgFor(file) });
+  await store.writeStatus(2, 'pending', undefined, { sender: 'outlook-A' });
+  assert.equal((await reopen(file)).getCell('L2').value, 'outlook-A');
+  assert.equal((await store.readRow(2)).sender, 'outlook-A');
+  assert.equal((await store.readRow(3)).sender, '');
+  await store.writeStatus(2, 'sent'); // a later status write must not touch the sender
+  assert.equal((await reopen(file)).getCell('L2').value, 'outlook-A');
+});
+test('sender column can be disabled', async () => {
+  const { file } = await makeBook();
+  const store = createXlsxStore({ cfg: cfgFor(file, { COL_SENDER: '' }) });
+  await store.writeStatus(2, 'pending', undefined, { sender: 'outlook-A' });
+  assert.equal((await reopen(file)).getCell('L2').value, null);
+});

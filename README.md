@@ -14,6 +14,11 @@ npm test        # extension + backend tests
 npm run check   # syntax check
 ```
 
+## Multiple Outlook accounts
+
+Run one Chrome profile per Outlook account, each with the extension and its own **Profile name**, all pointing at the
+same backend. Rows are handed out first come, first served, never twice, and column L records which account sent each row.
+
 ## How it fits together
 
 1. The extension asks the backend for a job at a random time every 10–20 minutes.

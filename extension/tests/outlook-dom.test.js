@@ -113,3 +113,77 @@ test('real Outlook structure: To has no role=textbox, Cc/Bcc are plain buttons, 
   assert.ok(o.OEA.findCcToggle(c.root));
   assert.equal(o.OEA.findCc(c.root), null, 'Cc field is hidden until its button is clicked');
 });
+
+// ---- Sent Items helpers (structure captured from real Outlook Web) ----
+const NOW = new Date('2026-10-15T22:53:10').getTime(); // local time
+const SENT_AT = new Date('2026-10-15T22:52:41').getTime();
+const row = (label, { title = 'Thu 10/15/2026 10:52 PM', text = '10:52 PM' } = {}) => ({ label, timeTitle: title, timeText: text });
+const q = { subject: 'potential collaboration', to: 'austinames410@gmail.com', sentAtMs: SENT_AT, nowMs: NOW };
+
+test('Sent Items folder control is found by data-folder-name (both tree entries)', async () => {
+  const o = await createOutlook();
+  o.doc.body.insertAdjacentHTML('beforeend', `<div role="tree">
+    <div role="treeitem" data-folder-name="sent items" aria-selected="false" title="Sent Items - 1 item (0 unread)"><span>Sent Items</span></div>
+    <div role="treeitem" data-folder-name="inbox" aria-selected="true" title="Inbox"><span>Inbox</span></div></div>`);
+  assert.ok(o.OEA.findFolder(o.doc, 'sent items'));
+  assert.equal(o.OEA.findFolder(o.doc, 'archive'), null);
+  assert.equal(o.OEA.findSelectedFolder(o.doc).getAttribute('data-folder-name'), 'inbox');
+  assert.equal(o.OEA.isFolderSelected(o.doc, 'sent items'), false);
+  o.OEA.findFolder(o.doc, 'sent items').setAttribute('aria-selected', 'true');
+  assert.equal(o.OEA.isFolderSelected(o.doc, 'sent items'), true);
+});
+test('readMessageRows reads option rows with label and time span', async () => {
+  const o = await createOutlook();
+  o.doc.getElementById('msglist').remove();
+  o.doc.body.insertAdjacentHTML('beforeend', `<div role="region"><div role="listbox" aria-label="Message list">
+    <div role="option" aria-label="austinames410@gmail.com potential collaboration 10:52 PM hi there">
+      <span>austinames410@gmail.com</span><span>potential collaboration</span><span title="Thu 10/15/2026 10:52 PM">10:52 PM</span><span>hi there</span></div></div></div>`);
+  const rows = o.OEA.readMessageRows(o.doc);
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].label, /potential collaboration/);
+  assert.equal(rows[0].timeTitle, 'Thu 10/15/2026 10:52 PM');
+  assert.equal(rows[0].timeText, '10:52 PM');
+});
+test('readMessageRows: no list => no rows', async () => {
+  const o = await createOutlook();
+  o.doc.getElementById('msglist').remove();
+  assert.equal(o.OEA.readMessageRows(o.doc).length, 0);
+});
+test('parseRowTime: full title, 12h/24h clock fallbacks, day-month locale mix-ups, junk', async () => {
+  const { OEA } = await createOutlook();
+  const t = (info) => { const v = OEA.parseRowTime(info, NOW); return v === null ? null : new Date(v).toTimeString().slice(0, 5); };
+  assert.equal(t(row('x')), '22:52');
+  assert.equal(t(row('x', { title: '', text: '10:52 PM' })), '22:52');
+  assert.equal(t(row('x', { title: '15/10/2026 22:52', text: '22:52' })), '22:52');
+  assert.equal(t(row('x', { title: '', text: '12:05 AM' })), '00:05');
+  assert.equal(t(row('x', { title: '', text: '12:05 PM' })), '12:05');
+  assert.equal(t(row('x', { title: 'Mon 11/09/2026 10:52 PM', text: '10:52 PM' })), '22:52', 'a far-off date is ignored in favour of today\'s clock');
+  assert.equal(t(row('x', { title: '', text: 'Thu 10/15' })), null);
+});
+test('matchSentRow: accepts the fresh message (email shown)', async () => {
+  const { OEA } = await createOutlook();
+  assert.ok(OEA.matchSentRow([row('austinames410@gmail.com potential collaboration 10:52 PM hi')], q));
+});
+test('matchSentRow: contact display name instead of an email is accepted (recipient not checkable)', async () => {
+  const { OEA } = await createOutlook();
+  assert.ok(OEA.matchSentRow([row('Austin Ames potential collaboration 10:52 PM hi')], q));
+});
+test('matchSentRow: rejects other recipient, other subject, old message, unreadable time', async () => {
+  const { OEA } = await createOutlook();
+  const no = (r) => assert.equal(OEA.matchSentRow([r], q), null);
+  no(row('someone.else@gmail.com potential collaboration 10:52 PM'));
+  no(row('austinames410@gmail.com different subject 10:52 PM'));
+  no(row('austinames410@gmail.com potential collaboration 8:30 PM', { title: 'Thu 10/15/2026 8:30 PM', text: '8:30 PM' }));
+  no(row('austinames410@gmail.com potential collaboration Tue', { title: 'Tue 10/13/2026 10:52 PM', text: 'Tue' }));
+  no(row('austinames410@gmail.com potential collaboration', { title: '', text: '' }));
+});
+test('matchSentRow: minute-granularity margin, case-insensitive subject, picks the right row among several', async () => {
+  const { OEA } = await createOutlook();
+  const rows = [
+    row('austinames410@gmail.com POTENTIAL   Collaboration 10:51 PM', { title: 'Thu 10/15/2026 10:51 PM', text: '10:51 PM' }),
+    row('other@x.com potential collaboration 10:52 PM'),
+  ];
+  assert.equal(OEA.matchSentRow(rows, q), rows[0]);
+  const early = row('austinames410@gmail.com potential collaboration 10:50 PM', { title: 'Thu 10/15/2026 10:50 PM', text: '10:50 PM' });
+  assert.equal(OEA.matchSentRow([early], q), null, 'two minutes before the click is too old');
+});

@@ -4,7 +4,7 @@ import { createStore, KEYS } from './store.js';
 
 const store = createStore(chrome.storage.local);
 const $ = (id) => document.getElementById(id);
-const FIELDS = ['apiBaseUrl', 'apiKey', 'authHeader', 'authScheme', 'claimMethod', 'claimPath', 'statusMethod', 'statusPath', 'jobStatePath', 'fetchMinMinutes', 'fetchMaxMinutes'];
+const FIELDS = ['apiBaseUrl', 'apiKey', 'profileName', 'authHeader', 'authScheme', 'claimMethod', 'claimPath', 'statusMethod', 'statusPath', 'jobStatePath', 'fetchMinMinutes', 'fetchMaxMinutes'];
 
 const LABELS = {
   not_configured: 'Not configured', waiting_outlook: 'Waiting for Outlook', ready: 'Ready',
@@ -54,11 +54,13 @@ async function loadForm() {
   const s = await store.getSettings();
   for (const f of FIELDS) $(f).value = s[f] ?? DEFAULT_SETTINGS[f] ?? '';
   $('statusValues').value = JSON.stringify(s.statusValues, null, 2);
+  $('verifySentItems').checked = s.verifySentItems;
 }
 
 function readForm() {
   const raw = {};
   for (const f of FIELDS) raw[f] = $(f).value;
+  raw.verifySentItems = $('verifySentItems').checked;
   let statusError = null;
   try { raw.statusValues = JSON.parse($('statusValues').value || '{}'); }
   catch { statusError = 'Status values must be valid JSON.'; }
@@ -100,6 +102,14 @@ $('enabled').addEventListener('change', async (ev) => {
   const s = await store.getSettings();
   await store.saveSettings({ ...s, enabled: ev.target.checked });
   chrome.runtime.sendMessage({ type: ev.target.checked ? 'OEA_TICK' : 'OEA_STOP' }).catch(() => {});
+});
+$('clearHistory').addEventListener('click', async () => {
+  const msg = $('historyMsg');
+  if (!confirm('Clear the list of jobs this extension has already processed?\n\nOnly do this if you checked Outlook\'s Sent Items and want a cleared row to be sent again.')) return;
+  try {
+    const r = await chrome.runtime.sendMessage({ type: 'OEA_CLEAR_HISTORY' });
+    msg.textContent = r && r.ok ? 'Job history cleared.' : `Not cleared: ${(r && r.reason) || 'unknown error'}`;
+  } catch (e) { msg.textContent = `Not cleared: ${e.message}`; }
 });
 $('start').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'OEA_START' }).catch(() => {}));
 $('stop').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'OEA_STOP' }).catch(() => {}));
