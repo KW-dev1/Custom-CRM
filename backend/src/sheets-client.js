@@ -46,7 +46,8 @@ export function createSheetsClient({ cfg, auth, fetchImpl = globalThis.fetch, sl
     if (!res.ok) {
       let detail = '';
       try { detail = (await res.json()).error?.message || ''; } catch { /* ignore */ }
-      const hint = res.status === 403 ? ' (does this Google user have edit access to the sheet?)' : res.status === 404 ? ' (check SHEET_ID / SHEET_GID)' : '';
+      const who = auth.identity || 'this Google user';
+      const hint = res.status === 403 ? ` (does ${who} have edit access to the sheet? Share the sheet with it as Editor.)` : res.status === 404 ? ' (check SHEET_ID / SHEET_GID)' : '';
       throw new SheetsError(`Sheets API HTTP ${res.status}${detail ? `: ${detail}` : ''}${hint}`, { status: res.status, retryable: res.status === 429 || res.status >= 500 });
     }
     return res.json();

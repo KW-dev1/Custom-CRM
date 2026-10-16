@@ -65,3 +65,14 @@ test('sender column defaults to L, can be disabled, and must differ from the oth
   assert.equal(loadConfig({ ...env, COL_SENDER: 'M' }).columns.sender, 'M');
   assert.throws(() => loadConfig({ ...env, COL_NOTE: 'L' }), /different/);
 });
+
+test('google source: a service account key file is enough (no OAuth values needed)', () => {
+  const c = loadConfig({ DATA_SOURCE: 'google', API_KEYS: 'abcdefghijklmnop1234', SHEET_URL: base().SHEET_URL, GOOGLE_SERVICE_ACCOUNT_FILE: './secrets/sa.json' });
+  assert.ok(c.google.serviceAccountFile.endsWith('secrets/sa.json') || c.google.serviceAccountFile.endsWith('secrets\\sa.json'));
+  assert.equal(c.google.clientId, undefined);
+});
+test('google source: needs either a service account file or the full OAuth set', () => {
+  const env = { DATA_SOURCE: 'google', API_KEYS: 'abcdefghijklmnop1234', SHEET_URL: base().SHEET_URL };
+  assert.throws(() => loadConfig(env), /GOOGLE_SERVICE_ACCOUNT_FILE/);
+  assert.throws(() => loadConfig({ ...env, GOOGLE_CLIENT_ID: 'x' }), /GOOGLE_SERVICE_ACCOUNT_FILE/);
+});
