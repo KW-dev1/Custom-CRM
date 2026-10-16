@@ -219,3 +219,69 @@ test('the To field holds exactly one chip for the To address and no leftover raw
   assert.equal(to.querySelectorAll('span[contenteditable="false"]').length, 1);
   assert.equal(Array.from(to.childNodes).filter((n) => n.nodeType === 3).length, 0);
 });
+
+// ---- Sent Items confirmation ----
+function runVerified(o, j = job(), extra = {}) {
+  const guard = newGuard(o.window);
+  const stages = [];
+  return o.OEA.processJob(j, {
+    doc: o.doc, loc: o.loc, guard, timeouts: { ...FAST, sentItems: 800 }, options: { verifySentItems: true },
+    markStage: async (id, s) => { stages.push(s); if (extra.failStage === s) throw new Error('storage down'); },
+  }).then((r) => ({ r, stages }));
+}
+
+test('Sent Items confirmation: message found => sent, with stronger evidence; view restored to the Inbox', async () => {
+  const o = await createOutlook();
+  const { r, stages } = await runVerified(o);
+  assert.equal(r.outcome, 'sent');
+  assert.match(r.evidence, /listed in Sent Items/);
+  assert.equal(o.controls.sendClicks, 1);
+  assert.equal(o.controls.folderClicks.sent, 1);
+  assert.equal(o.controls.folderClicks.inbox, 1, 'went back to where the user was');
+  assert.equal(stages.at(-1), 'verifying_sent_items');
+});
+test('the Sent Items check is OFF unless enabled (no folder navigation)', async () => {
+  const o = await createOutlook();
+  const { r } = await run(o);
+  assert.equal(r.outcome, 'sent');
+  assert.equal(o.controls.folderClicks.sent, 0);
+});
+test('Sent Items: message listed after a delay is still found', async () => {
+  const o = await createOutlook({ sentItems: 'delayed' });
+  const { r } = await runVerified(o);
+  assert.equal(r.outcome, 'sent');
+});
+test('Sent Items: message never listed => uncertain (needs review), never "sent", not resent', async () => {
+  const o = await createOutlook({ sentItems: 'missing' });
+  const { r } = await runVerified(o);
+  assert.equal(r.outcome, 'uncertain');
+  assert.equal(r.code, 'SENT_ITEMS_NOT_FOUND');
+  assert.equal(r.sendClicked, true);
+  assert.equal(o.controls.sendClicks, 1);
+});
+test('Sent Items: an OLD message with the same subject does not count', async () => {
+  const o = await createOutlook({ sentItems: 'old' });
+  const { r } = await runVerified(o);
+  assert.equal(r.code, 'SENT_ITEMS_NOT_FOUND');
+});
+test('Sent Items: same subject to a DIFFERENT recipient does not count', async () => {
+  const o = await createOutlook({ sentItems: 'wrong-recipient' });
+  const { r } = await runVerified(o);
+  assert.equal(r.code, 'SENT_ITEMS_NOT_FOUND');
+});
+test('Sent Items: a contact display name instead of the address is accepted', async () => {
+  const o = await createOutlook({ sentItems: 'name' });
+  const { r } = await runVerified(o);
+  assert.equal(r.outcome, 'sent');
+});
+test('Sent Items folder control missing => uncertain with its own code', async () => {
+  const o = await createOutlook({ sentItems: 'no-folder' });
+  const { r } = await runVerified(o);
+  assert.equal(r.outcome, 'uncertain');
+  assert.equal(r.code, 'SENT_ITEMS_UNAVAILABLE');
+  assert.equal(o.controls.sendClicks, 1);
+});
+test('Sent Items stage is recorded as post-send (crash recovery => needs review)', async () => {
+  const { classifyInterrupted } = await import('../state.js');
+  assert.equal(classifyInterrupted({ jobId: 'j', stage: 'verifying_sent_items', at: 1 }, 'j').status, 'needs_review');
+});

@@ -134,6 +134,7 @@ test('Sent Items folder control is found by data-folder-name (both tree entries)
 });
 test('readMessageRows reads option rows with label and time span', async () => {
   const o = await createOutlook();
+  o.doc.getElementById('msglist').remove();
   o.doc.body.insertAdjacentHTML('beforeend', `<div role="region"><div role="listbox" aria-label="Message list">
     <div role="option" aria-label="austinames410@gmail.com potential collaboration 10:52 PM hi there">
       <span>austinames410@gmail.com</span><span>potential collaboration</span><span title="Thu 10/15/2026 10:52 PM">10:52 PM</span><span>hi there</span></div></div></div>`);
@@ -145,6 +146,7 @@ test('readMessageRows reads option rows with label and time span', async () => {
 });
 test('readMessageRows: no list => no rows', async () => {
   const o = await createOutlook();
+  o.doc.getElementById('msglist').remove();
   assert.equal(o.OEA.readMessageRows(o.doc).length, 0);
 });
 test('parseRowTime: full title, 12h/24h clock fallbacks, day-month locale mix-ups, junk', async () => {

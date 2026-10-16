@@ -8,7 +8,7 @@
   const OEA = (root.OEA = root.OEA || {});
   const { OEAError } = OEA;
 
-  const DEFAULT_TIMEOUTS = { ready: 15000, compose: 15000, recipient: 10000, verify: 20000 };
+  const DEFAULT_TIMEOUTS = { ready: 15000, compose: 15000, recipient: 10000, verify: 20000, sentItems: 30000 };
   const EMAIL_RE = /^[^\s@,;<>()"]+@[^\s@,;<>()"]+\.[^\s@,;<>()"]{2,}$/;
 
   function validateJobFields(job) {
@@ -72,8 +72,28 @@
   }
 
   /**
+   * Open Sent Items and wait for the message we just sent to be listed there. Goes back to the
+   * folder the user was in afterwards (best effort).
+   */
+  async function confirmInSentItems(doc, job, sentAtMs, timeoutMs) {
+    const folder = OEA.findFolder(doc, 'sent items');
+    if (!folder) throw new OEAError('SENT_ITEMS_UNAVAILABLE', 'Could not find the Sent Items folder to confirm the send.');
+    const previous = OEA.findSelectedFolder(doc);
+    folder.click();
+    try {
+      await OEA.waitFor(() => OEA.isFolderSelected(doc, 'sent items'), { timeoutMs: Math.min(timeoutMs, 10000), description: 'the Sent Items folder to open', doc });
+      return await OEA.waitFor(
+        () => OEA.matchSentRow(OEA.readMessageRows(doc), { subject: job.subject, to: job.to.trim(), sentAtMs, nowMs: Date.now() }),
+        { timeoutMs, description: 'the message to appear in Sent Items', doc },
+      );
+    } finally {
+      try { if (previous && previous !== folder && previous.isConnected) previous.click(); } catch { /* best effort */ }
+    }
+  }
+
+  /**
    * @param job {id,to,subject,body}
-   * @param ctx {doc, loc, guard:{processed:Set,current:string|null}, markStage(jobId,stage):Promise, timeouts?}
+   * @param ctx {doc, loc, guard:{processed:Set,current:string|null}, markStage(jobId,stage):Promise, timeouts?, options?:{verifySentItems?:boolean}}
    * @returns {{outcome:'sent'|'failed'|'uncertain', sendClicked:boolean, code?:string, message:string, evidence?:string}}
    */
   async function processJob(job, ctx) {
@@ -137,6 +157,7 @@
       await ctx.markStage(job.id, 'send_clicking');
       guard.processed.add(job.id);
       sendClicked = true;
+      const sentAtMs = Date.now();
       compose.send.click(); // exactly once
 
       await ctx.markStage(job.id, 'verifying');
@@ -151,11 +172,23 @@
       if (verdict.kind === 'error') {
         return { outcome: 'uncertain', sendClicked, code: 'SEND_ERROR_SHOWN', message: `Outlook reported a problem after Send: "${verdict.text}". The email was not resent.` };
       }
-      return {
-        outcome: 'sent', sendClicked, code: 'OK',
-        evidence: verdict.kind === 'closed' ? 'compose window closed after Send' : 'Outlook showed a "message sent" notification',
-        message: 'Outlook accepted the message.',
-      };
+      let evidence = verdict.kind === 'closed' ? 'compose window closed after Send' : 'Outlook showed a "message sent" notification';
+      if (ctx.options && ctx.options.verifySentItems) {
+        await ctx.markStage(job.id, 'verifying_sent_items');
+        try {
+          await confirmInSentItems(doc, job, sentAtMs, t.sentItems);
+          evidence = `${evidence}, and the message is listed in Sent Items`;
+        } catch (e) {
+          const notFound = !(e instanceof OEAError) || e.code === 'TIMEOUT';
+          return {
+            outcome: 'uncertain', sendClicked, code: notFound ? 'SENT_ITEMS_NOT_FOUND' : e.code,
+            message: notFound
+              ? `Send was clicked and the compose window closed, but the message was not found in Sent Items within ${Math.round(t.sentItems / 1000)}s. It may still be sent; check Sent Items. It was not resent.`
+              : `${e.message} The email may have been sent; check Sent Items. It was not resent.`,
+          };
+        }
+      }
+      return { outcome: 'sent', sendClicked, code: 'OK', evidence, message: 'Outlook accepted the message.' };
     } catch (e) {
       const code = e instanceof OEAError ? e.code : 'UNEXPECTED';
       const message = e instanceof OEAError ? e.message : `Unexpected error: ${e && e.message}`;

@@ -9,7 +9,12 @@ export const SCRIPTS = ['outlook-dom.js', 'outlook-flow.js'].map(src);
 
 const SHELL = `<!doctype html><html><body>
 <div role="main"><button aria-label="New mail">New mail</button></div>
-<div id="toasts" role="status"></div></body></html>`;
+<div id="toasts" role="status"></div>
+<div role="tree" id="tree">
+  <div role="treeitem" data-folder-name="inbox" aria-selected="true" title="Inbox"><span>Inbox</span></div>
+  <div role="treeitem" data-folder-name="sent items" aria-selected="false" title="Sent Items - 0 items"><span>Sent Items</span></div>
+</div>
+<div role="region"><div role="listbox" aria-label="Message list" id="msglist"></div></div></body></html>`;
 
 /**
  * The compose markup mirrors a REAL Outlook Web compose window (captured from the DOM):
@@ -23,14 +28,61 @@ const SHELL = `<!doctype html><html><body>
  * opts.pre: 'compose' => a draft is already open; 'signedOut' | 'noShell'
  * opts.noSend: omit the Send button
  * opts.noCcToggle: omit the "Cc" button; opts.ccResolve=false: Cc recipients never resolve
+ * opts.sentItems: how the Sent Items folder behaves after Send:
+ *   'normal' (row appears) | 'delayed' (row appears after 700ms) | 'missing' (never) | 'old' (only an old row with
+ *   the same subject) | 'name' (shows a display name, not an address) | 'wrong-recipient' | 'no-folder'
  */
 export async function createOutlook(opts = {}) {
-  const { sendMode = 'close', resolve = true, resolveOn = 'enter', pre = null, noSend = false, noCcToggle = false, ccResolve = true, url = 'https://outlook.live.com/mail/0/' } = opts;
+  const { sendMode = 'close', resolve = true, resolveOn = 'enter', pre = null, noSend = false, noCcToggle = false, ccResolve = true, sentItems = 'normal', url = 'https://outlook.live.com/mail/0/' } = opts;
   const dom = new JSDOM(pre === 'signedOut' ? '<body><a data-task="signin" href="#">Sign in</a></body>' : pre === 'noShell' ? '<body><p>Loading…</p></body>' : SHELL,
     { url, runScripts: 'outside-only', pretendToBeVisual: true });
   const { window } = dom;
   const doc = window.document;
-  const c = { sendClicks: 0, newMailClicks: 0, ccTouched: false, ccToggleClicks: 0 };
+  const c = { sendClicks: 0, newMailClicks: 0, ccTouched: false, ccToggleClicks: 0, folderClicks: { sent: 0, inbox: 0 } };
+  const mailbox = { current: 'inbox', sent: [] };
+
+  // ---- folder tree + message list ----
+  const pad = (n) => String(n).padStart(2, '0');
+  const clock = (d) => `${((d.getHours() + 11) % 12) + 1}:${pad(d.getMinutes())} ${d.getHours() < 12 ? 'AM' : 'PM'}`;
+  const fullDate = (d) => `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()]} ${d.getMonth() + 1}/${d.getDate()}/${d.getFullYear()} ${clock(d)}`;
+  const renderList = () => {
+    const list = doc.getElementById('msglist');
+    if (!list) return;
+    const rows = mailbox.current === 'inbox'
+      ? [{ who: 'news@example.com', subject: 'Weekly digest', at: new Date(Date.now() - 3600e3) }]
+      : mailbox.sent;
+    list.innerHTML = '';
+    rows.forEach((m, i) => {
+      const row = doc.createElement('div');
+      row.setAttribute('role', 'option');
+      row.setAttribute('aria-label', `${m.who} ${m.subject} ${clock(m.at)} preview text`);
+      row.setAttribute('aria-posinset', String(i + 1));
+      row.innerHTML = '<div><span></span><span></span><span class="t"></span><span>preview text</span></div>';
+      const [a, b, t] = row.querySelectorAll('span');
+      a.textContent = m.who; b.textContent = m.subject; t.textContent = clock(m.at); t.setAttribute('title', fullDate(m.at));
+      list.appendChild(row);
+    });
+  };
+  doc.querySelectorAll('[role="treeitem"]').forEach((item) => {
+    if (sentItems === 'no-folder' && item.getAttribute('data-folder-name') === 'sent items') item.remove();
+    else item.addEventListener('click', () => {
+      const name = item.getAttribute('data-folder-name') === 'sent items' ? 'sent' : 'inbox';
+      c.folderClicks[name] += 1;
+      mailbox.current = name === 'sent' ? 'sent items' : 'inbox';
+      doc.querySelectorAll('[role="treeitem"]').forEach((x) => x.setAttribute('aria-selected', String(x === item)));
+      renderList();
+    });
+  });
+  renderList();
+  const recordSent = (to, subject) => {
+    const add = (m) => { mailbox.sent.unshift(m); if (mailbox.current === 'sent items') renderList(); };
+    const now = new Date();
+    if (sentItems === 'normal') add({ who: to, subject, at: now });
+    if (sentItems === 'name') add({ who: 'Austin Ames', subject, at: now });
+    if (sentItems === 'wrong-recipient') add({ who: 'someone.else@example.com', subject, at: now });
+    if (sentItems === 'old') add({ who: to, subject, at: new Date(Date.now() - 2 * 3600e3) });
+    if (sentItems === 'delayed') setTimeout(() => add({ who: to, subject, at: new Date() }), 700);
+  };
 
   const openCompose = () => {
     const wrap = doc.createElement('div');
@@ -75,6 +127,8 @@ export async function createOutlook(opts = {}) {
     const send = wrap.querySelector('[aria-label="Send"]');
     if (send) send.addEventListener('click', () => {
       c.sendClicks += 1;
+      const toChip = wrap.querySelector('[aria-label="To"] span[contenteditable="false"]');
+      recordSent(toChip ? toChip.getAttribute('aria-label') : '?', wrap.querySelector('input[aria-label="Subject"]').value);
       if (sendMode === 'close') setTimeout(() => wrap.remove(), 20);
       if (sendMode === 'late-close') setTimeout(() => wrap.remove(), 900);
       if (sendMode === 'error') { const a = doc.createElement('div'); a.setAttribute('role', 'alert'); a.textContent = "We couldn't send your message. Try again."; doc.body.appendChild(a); }
