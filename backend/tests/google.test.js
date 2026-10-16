@@ -4,7 +4,8 @@ import { createGoogleAuth, GoogleAuthError } from '../src/google-auth.js';
 import { createSheetsClient, SheetsError } from '../src/sheets-client.js';
 import { loadConfig } from '../src/config.js';
 
-const cfg = () => loadConfig({
+const cfg = (extra = {}) => loadConfig({
+  COL_SENDER: '', ...extra,
   DATA_SOURCE: 'google', API_KEYS: 'abcdefghijklmnop1234', SHEET_URL: 'https://docs.google.com/spreadsheets/d/SHEETID/edit?gid=42',
   GOOGLE_CLIENT_ID: 'cid', GOOGLE_CLIENT_SECRET: 'sec', GOOGLE_REFRESH_TOKEN: 'rt',
 });
@@ -35,10 +36,10 @@ test('auth: network failure', async () => {
   await assert.rejects(auth.getAccessToken(), GoogleAuthError);
 });
 
-function sheetsWith(handler) {
+function sheetsWith(handler, env = {}) {
   const seen = [];
   const auth = { getAccessToken: async () => 'T', invalidate() { seen.push('invalidate'); } };
-  const client = createSheetsClient({ cfg: cfg(), auth, sleep: async () => {}, fetchImpl: async (url, init = {}) => { seen.push({ url: decodeURIComponent(url), method: init.method || 'GET', body: init.body && JSON.parse(init.body), auth: init.headers.authorization }); return handler(seen.at(-1), seen); } });
+  const client = createSheetsClient({ cfg: cfg(env), auth, sleep: async () => {}, fetchImpl: async (url, init = {}) => { seen.push({ url: decodeURIComponent(url), method: init.method || 'GET', body: init.body && JSON.parse(init.body), auth: init.headers.authorization }); return handler(seen.at(-1), seen); } });
   return { client, seen };
 }
 const meta = { sheets: [{ properties: { sheetId: 0, title: 'Other' } }, { properties: { sheetId: 42, title: "Bob's Leads" } }] };
@@ -90,4 +91,13 @@ test('sheets: transient GET errors are retried, writes are not', async () => {
   const b = sheetsWith(async (r) => r.url.includes('fields=') ? json(200, meta) : (w++, json(503, {})));
   await assert.rejects(b.client.writeStatus(3, 'sent'), (e) => e.retryable);
   assert.equal(w, 1);
+});
+
+test('sheets: sender is written in the same batch as the status and read from its column', async () => {
+  const { client, seen } = sheetsWith(async (r) => r.url.includes('fields=') ? json(200, meta) : json(200, { values: [['a@x.com', 's', 'b', 'pending', '', 'outlook-A']] }), { COL_SENDER: 'L' });
+  await client.writeStatus(9, 'pending', undefined, { sender: 'outlook-A' });
+  const w = seen.at(-1);
+  assert.deepEqual(w.body.data.map((d) => d.range), ["'Bob''s Leads'!J9", "'Bob''s Leads'!L9"]);
+  const row = await client.readRow(9);
+  assert.equal(row.sender, 'outlook-A');
 });
