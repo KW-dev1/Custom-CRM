@@ -80,12 +80,20 @@
     if (!folder) throw new OEAError('SENT_ITEMS_UNAVAILABLE', 'Could not find the Sent Items folder to confirm the send.');
     const previous = OEA.findSelectedFolder(doc);
     folder.click();
+    let opened = false;
+    const query = () => ({ subject: job.subject, to: job.to.trim(), sentAtMs, nowMs: Date.now() });
     try {
       await OEA.waitFor(() => OEA.isFolderSelected(doc, 'sent items'), { timeoutMs: Math.min(timeoutMs, 10000), description: 'the Sent Items folder to open', doc });
-      return await OEA.waitFor(
-        () => OEA.matchSentRow(OEA.readMessageRows(doc), { subject: job.subject, to: job.to.trim(), sentAtMs, nowMs: Date.now() }),
-        { timeoutMs, description: 'the message to appear in Sent Items', doc },
-      );
+      opened = true;
+      return await OEA.waitFor(() => OEA.matchSentRow(OEA.readMessageRows(doc), query()), { timeoutMs, description: 'the message to appear in Sent Items', doc });
+    } catch (e) {
+      if (e instanceof OEAError && e.code === 'TIMEOUT') {
+        const d = OEA.diagnoseSentRows(OEA.readMessageRows(doc), query());
+        const err = new OEAError('SENT_ITEMS_NOT_FOUND', 'The message did not appear in Sent Items.');
+        err.details = `Sent Items check saw: folder opened=${opened ? 'yes' : 'no'}; rows listed=${d.rows}; rows with the subject=${d.subject}; of those with the recipient=${d.recipient}; time readable=${d.timeReadable}; within the time window=${d.inWindow}.`;
+        throw err;
+      }
+      throw e;
     } finally {
       try { if (previous && previous !== folder && previous.isConnected) previous.click(); } catch { /* best effort */ }
     }
@@ -179,11 +187,11 @@
           await confirmInSentItems(doc, job, sentAtMs, t.sentItems);
           evidence = `${evidence}, and the message is listed in Sent Items`;
         } catch (e) {
-          const notFound = !(e instanceof OEAError) || e.code === 'TIMEOUT';
+          const notFound = !(e instanceof OEAError) || e.code === 'TIMEOUT' || e.code === 'SENT_ITEMS_NOT_FOUND';
           return {
             outcome: 'uncertain', sendClicked, code: notFound ? 'SENT_ITEMS_NOT_FOUND' : e.code,
             message: notFound
-              ? `Send was clicked and the compose window closed, but the message was not found in Sent Items within ${Math.round(t.sentItems / 1000)}s. It may still be sent; check Sent Items. It was not resent.`
+              ? `Send was clicked and the compose window closed, but the message was not found in Sent Items within ${Math.round(t.sentItems / 1000)}s. It may still be sent; check Sent Items. It was not resent. ${e.details || ''}`.trim()
               : `${e.message} The email may have been sent; check Sent Items. It was not resent.`,
           };
         }

@@ -187,3 +187,15 @@ test('matchSentRow: minute-granularity margin, case-insensitive subject, picks t
   const early = row('austinames410@gmail.com potential collaboration 10:50 PM', { title: 'Thu 10/15/2026 10:50 PM', text: '10:50 PM' });
   assert.equal(OEA.matchSentRow([early], q), null, 'two minutes before the click is too old');
 });
+
+test('diagnoseSentRows counts rows, subject, recipient, readable time and window separately', async () => {
+  const { OEA } = await createOutlook();
+  const rows = [
+    row('austinames410@gmail.com potential collaboration 10:52 PM'),
+    row('other@x.com potential collaboration 10:52 PM'),
+    row('austinames410@gmail.com potential collaboration 8:30 PM', { title: 'Thu 10/15/2026 8:30 PM', text: '8:30 PM' }),
+    row('austinames410@gmail.com unrelated subject 10:52 PM'),
+    row('austinames410@gmail.com potential collaboration', { title: '', text: '' }),
+  ];
+  assert.deepEqual({ ...OEA.diagnoseSentRows(rows, q) }, { rows: 5, subject: 4, recipient: 3, timeReadable: 2, inWindow: 1 });
+});

@@ -285,3 +285,16 @@ test('Sent Items stage is recorded as post-send (crash recovery => needs review)
   const { classifyInterrupted } = await import('../state.js');
   assert.equal(classifyInterrupted({ jobId: 'j', stage: 'verifying_sent_items', at: 1 }, 'j').status, 'needs_review');
 });
+
+test('Sent Items miss reports counts of what it saw (no personal data) so a mismatch can be diagnosed', async () => {
+  const o = await createOutlook({ sentItems: 'old' });
+  const { r } = await runVerified(o);
+  assert.equal(r.code, 'SENT_ITEMS_NOT_FOUND');
+  assert.match(r.message, /folder opened=yes; rows listed=1; rows with the subject=1; of those with the recipient=1; time readable=1; within the time window=0/);
+  assert.ok(!/@/.test(r.message), 'no addresses in the message');
+});
+test('Sent Items miss with nothing listed says so', async () => {
+  const o = await createOutlook({ sentItems: 'missing' });
+  const { r } = await runVerified(o);
+  assert.match(r.message, /rows listed=0; rows with the subject=0/);
+});
