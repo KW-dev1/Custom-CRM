@@ -379,6 +379,7 @@ How it behaves:
 | Popup says **Not configured** even though the form is filled | You did not click **Save settings**. Click it and allow the permission prompt. |
 | `Backend server error (HTTP 502)` | See the backend terminal. Usually `Excel file not found` (check the **exact** file name and that Windows is not hiding a second `.xlsx`), or the file is open in Excel. |
 | `Backend rejected the credentials (HTTP 401)` | The popup key differs from `API_KEYS`. Copy it exactly. |
+| Backend says `XLSX_PATH is required` although you use Google Sheets | `DATA_SOURCE=google` is missing from `backend/.env` (or has a `#` in front, or spaces around `=`). Edits to `.env` must be **added** to the file, not replace it. `npm run check:source` prints `Data source: ...` on its first line to confirm which source is active. |
 | `check:source` says **Google rejected the service account key** | The message now says why. Usually: **the Windows clock is off** (Settings > Time & language > Date & time > *Sync now*, and turn on *Set time automatically*); or the key file was **edited** or is from a **deleted key** (create a NEW JSON key in Google Cloud and use the downloaded file unchanged); or the service account was deleted/disabled. |
 | `Could not reach the backend` | The backend is not running, or the URL/port is wrong. |
 | Nothing happens after **Start** | Outlook tab missing or signed out; no row has H, I and G filled with J empty; or the next-fetch time has not arrived (the message says when). |

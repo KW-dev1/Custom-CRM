@@ -76,3 +76,8 @@ test('google source: needs either a service account file or the full OAuth set',
   assert.throws(() => loadConfig(env), /GOOGLE_SERVICE_ACCOUNT_FILE/);
   assert.throws(() => loadConfig({ ...env, GOOGLE_CLIENT_ID: 'x' }), /GOOGLE_SERVICE_ACCOUNT_FILE/);
 });
+
+test('missing DATA_SOURCE with Google settings present gives a pointed hint', () => {
+  assert.throws(() => loadConfig({ API_KEYS: 'abcdefghijklmnop1234', SHEET_URL: base().SHEET_URL, GOOGLE_SERVICE_ACCOUNT_FILE: './secrets/sa.json' }), /did you mean DATA_SOURCE=google/);
+  assert.throws(() => loadConfig({ API_KEYS: 'abcdefghijklmnop1234' }), (e) => /XLSX_PATH is required/.test(e.message) && !/did you mean/.test(e.message));
+});

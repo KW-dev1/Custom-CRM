@@ -55,7 +55,16 @@ export function loadConfig(env = process.env) {
     if (!gid && !tab) errors.push('SHEET_GID (or a SHEET_URL containing gid=) or SHEET_TAB is required');
     if (gid && !/^\d+$/.test(gid)) errors.push('SHEET_GID must be numeric');
   }
-  const xlsxPath = type === 'xlsx' ? need('XLSX_PATH') : '';
+  let xlsxPath = '';
+  if (type === 'xlsx') {
+    xlsxPath = get('XLSX_PATH');
+    if (!xlsxPath) {
+      const hasGoogle = get('SHEET_URL') || get('SHEET_ID') || get('GOOGLE_SERVICE_ACCOUNT_FILE') || get('GOOGLE_CLIENT_ID');
+      errors.push(hasGoogle
+        ? 'XLSX_PATH is required because DATA_SOURCE is "xlsx" (the default). You have Google settings: did you mean DATA_SOURCE=google? Check backend/.env: no "#" before that line and no spaces around "=".'
+        : 'XLSX_PATH is required');
+    }
+  }
   if (xlsxPath && !/\.xlsx$/i.test(xlsxPath)) errors.push('XLSX_PATH must point to an .xlsx file');
 
   const columns = {
