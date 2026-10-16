@@ -126,3 +126,23 @@ test('logs never contain email addresses or message bodies', () => {
   assert.ok(!text.includes('Body 1') && !text.includes('Subject 1'));
   assert.ok(!/lead\d@x\.com|cc\d@y\.org|solo@x\.com/.test(text), 'no email addresses in logs');
 });
+
+test('X-Client-Id: valid names are recorded, bad ones are rejected, other profiles cannot report', async () => {
+  const sh = new FakeSheet([lead(1), lead(2)]);
+  const cfg = testConfig();
+  const app = createApp({ service: createJobService({ sheet: sh, cfg }), cfg, log: () => {} });
+  const s = await new Promise((r) => { const x = app.listen(0, '127.0.0.1', () => r(x)); });
+  const u = `http://127.0.0.1:${s.address().port}/api/email-jobs`;
+  const h = (client) => ({ authorization: `Bearer ${KEY}`, 'content-type': 'application/json', ...(client ? { 'x-client-id': client } : {}) });
+  const claim = await fetch(`${u}/claim`, { method: 'POST', headers: h('outlook-A'), body: '{}' });
+  const { job } = await claim.json();
+  assert.equal(sh.rows[0].sender, 'outlook-A');
+  assert.equal((await fetch(`${u}/claim`, { method: 'POST', headers: h('bad@name.com'), body: '{}' })).status, 400);
+  assert.equal((await fetch(`${u}/claim`, { method: 'POST', headers: h('x'.repeat(41)), body: '{}' })).status, 400);
+  const wrong = await fetch(`${u}/${job.id}/status`, { method: 'POST', headers: h('outlook-B'), body: JSON.stringify({ status: 'sent' }) });
+  assert.equal(wrong.status, 409);
+  assert.equal((await wrong.json()).error.code, 'WRONG_CLIENT');
+  const ok = await fetch(`${u}/${job.id}/status`, { method: 'POST', headers: h('outlook-A'), body: JSON.stringify({ status: 'sent' }) });
+  assert.equal(ok.status, 200);
+  s.close();
+});
