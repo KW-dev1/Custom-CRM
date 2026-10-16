@@ -77,6 +77,23 @@ export async function loadServiceAccountKey(path) {
 
 const b64u = (v) => Buffer.from(v).toString('base64url');
 
+/**
+ * Turn Google's invalid_grant answer into something actionable. `skewSec` is how far this computer's
+ * clock is ahead (+) or behind (-) Google's, measured from the response's Date header (null if unknown).
+ */
+export function explainInvalidGrant(description, skewSec) {
+  const d = String(description || '').slice(0, 200);
+  const detail = d ? ` Google says: "${d}".` : '';
+  const clockFix = 'Sync the Windows clock (Settings > Time & language > Date & time > "Sync now"; turn on "Set time automatically") and try again.';
+  if (skewSec !== null && Math.abs(skewSec) > 120) {
+    return `This computer's clock is about ${Math.max(1, Math.round(Math.abs(skewSec) / 60))} minute(s) ${skewSec > 0 ? 'ahead of' : 'behind'} Google's, which makes Google reject the login. ${clockFix}${detail}`;
+  }
+  if (/short-lived|timeframe|\biat\b|\bexp\b/i.test(d)) return `Google thinks this computer's clock is wrong. ${clockFix}${detail}`;
+  if (/signature/i.test(d)) return `The key in the file does not match Google's records: the file was edited, is from a deleted key, or belongs to another service account. Create a NEW JSON key for the service account and use that file unchanged.${detail}`;
+  if (/not found|disabled|deleted/i.test(d)) return `The service account was not found or is disabled/deleted in Google Cloud. Check IAM & Admin > Service Accounts, then create a new JSON key.${detail}`;
+  return `Google rejected the service account key. It may have been deleted or disabled in Google Cloud, the file may have been edited, or this computer's clock is wrong. Create a new JSON key and check the system time.${detail}`;
+}
+
 export function createServiceAccountAuth({ clientEmail, privateKey, fetchImpl = globalThis.fetch, now = Date.now }) {
   let cached = null;
   let inflight = null;
@@ -110,7 +127,10 @@ export function createServiceAccountAuth({ clientEmail, privateKey, fetchImpl = 
     if (!res.ok || !data || !data.access_token) {
       const code = data && data.error;
       if (code === 'invalid_grant') {
-        throw new GoogleAuthError('Google rejected the service account key. It may have been deleted or disabled in Google Cloud, or this computer\'s clock is wrong. Create a new JSON key and check the system time.', { revoked: true, status: res.status });
+        let skewSec = null;
+        const serverDate = res.headers && typeof res.headers.get === 'function' ? Date.parse(res.headers.get('date') || '') : NaN;
+        if (!Number.isNaN(serverDate)) skewSec = (now() - serverDate) / 1000;
+        throw new GoogleAuthError(explainInvalidGrant(data.error_description, skewSec), { revoked: true, status: res.status });
       }
       throw new GoogleAuthError(`Google token endpoint error${code ? `: ${code}` : ''} (HTTP ${res.status}).`, { status: res.status });
     }

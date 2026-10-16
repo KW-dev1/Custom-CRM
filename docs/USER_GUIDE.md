@@ -379,6 +379,7 @@ How it behaves:
 | Popup says **Not configured** even though the form is filled | You did not click **Save settings**. Click it and allow the permission prompt. |
 | `Backend server error (HTTP 502)` | See the backend terminal. Usually `Excel file not found` (check the **exact** file name and that Windows is not hiding a second `.xlsx`), or the file is open in Excel. |
 | `Backend rejected the credentials (HTTP 401)` | The popup key differs from `API_KEYS`. Copy it exactly. |
+| `check:source` says **Google rejected the service account key** | The message now says why. Usually: **the Windows clock is off** (Settings > Time & language > Date & time > *Sync now*, and turn on *Set time automatically*); or the key file was **edited** or is from a **deleted key** (create a NEW JSON key in Google Cloud and use the downloaded file unchanged); or the service account was deleted/disabled. |
 | `Could not reach the backend` | The backend is not running, or the URL/port is wrong. |
 | Nothing happens after **Start** | Outlook tab missing or signed out; no row has H, I and G filled with J empty; or the next-fetch time has not arrived (the message says when). |
 | Row marked `failed` instantly (a fraction of a second) | A draft was already open, or **Duplicate delivery** from a previous failure (fixed: failed rows now retry; update to the latest code). |

@@ -176,3 +176,25 @@ test('sheets: readHeader reads the header row cells of the configured columns', 
   assert.ok(seen.at(-1).url.includes('!G1:J1'));
   assert.deepEqual([h.emails, h.subject, h.body, h.status], ['Email', 'Subject', 'Message', 'Status']);
 });
+
+// ---- invalid_grant explanations ----
+import { explainInvalidGrant } from '../src/google-auth.js';
+
+test('explainInvalidGrant: a measured clock skew is reported in minutes, ahead or behind', () => {
+  assert.match(explainInvalidGrant('anything', 600), /about 10 minute\(s\) ahead of Google/);
+  assert.match(explainInvalidGrant('', -300), /about 5 minute\(s\) behind Google/);
+  assert.match(explainInvalidGrant('', 600), /Sync the Windows clock/);
+});
+test('explainInvalidGrant: small skew falls through to what Google said', () => {
+  assert.match(explainInvalidGrant('Invalid JWT Signature.', 3), /does not match Google's records.*NEW JSON key/s);
+  assert.match(explainInvalidGrant('Invalid JWT: Token must be a short-lived token (60 minutes) and in a reasonable timeframe.', null), /clock is wrong/);
+  assert.match(explainInvalidGrant('Invalid grant: account not found', null), /not found or is disabled/);
+  assert.match(explainInvalidGrant('', null), /deleted or disabled.*clock/s);
+  assert.match(explainInvalidGrant('Invalid JWT Signature.', 3), /Google says: "Invalid JWT Signature\."/);
+});
+test('service account: the real error path uses the Date header to detect a bad clock', async () => {
+  const googleNow = Date.parse('2026-10-16T12:00:00Z');
+  const auth = createServiceAccountAuth({ clientEmail: SA, privateKey: privatePem, now: () => googleNow + 25 * 60 * 1000,
+    fetchImpl: async () => ({ ok: false, status: 400, headers: { get: (k) => (k === 'date' ? new Date(googleNow).toUTCString() : null) }, json: async () => ({ error: 'invalid_grant', error_description: 'Invalid JWT: Token must be a short-lived token' }) }) });
+  await assert.rejects(auth.getAccessToken(), (e) => e.revoked && /about 25 minute\(s\) ahead/.test(e.message));
+});
