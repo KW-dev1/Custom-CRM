@@ -98,7 +98,7 @@ export function createApp({ service, cfg, log = () => {}, now = Date.now }) {
       return res.status(err.status).json({ error: { code: err.code, message: err.message } });
     }
     if (err instanceof SheetsError || err instanceof GoogleAuthError) {
-      log('error', 'google_error', { kind: err.name, status: err.status ?? null, message: err.message });
+      log('error', 'data_source_error', { kind: err.name, status: err.status ?? null, message: err.message });
       return res.status(502).json({ error: { code: 'SHEET_UNAVAILABLE', message: err.message } });
     }
     if (err && (err.type === 'entity.parse.failed' || err.type === 'entity.too.large')) {
