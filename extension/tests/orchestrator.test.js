@@ -339,3 +339,21 @@ test('uncertain Sent Items result from the page becomes needs_review and pauses'
   assert.equal(e.calls.reports.at(-1).status, 'needs_review');
   assert.equal((await e.store.getRuntime()).running, false);
 });
+
+test('a permanently refused report (409) does not block the extension forever, never resends, and pauses', async () => {
+  const e = setup({ sendResult: { outcome: 'sent', evidence: 'x' } });
+  const refuse = Object.assign(new ApiError('client', 'Backend rejected the request (HTTP 409).', { status: 409 }));
+  e.orch = (await import('../orchestrator.js')).createOrchestrator({
+    store: e.store, now: () => 1_000_000 + e.clockOffset, logger: { log: async () => {} }, scheduleNext: () => {}, random: () => 0,
+    api: { claimJob: async () => { e.calls.claim++; return goodJob(); }, getJobState: async () => null, validateJob,
+      reportStatus: async (_s, r) => { if (r.status === 'processing') return; throw refuse; } },
+    tabs: { findOutlookTab: async () => e.tab, send: async (_i, m) => (m.type === 'OEA_CHECK_READY' ? { state: 'ready' } : { outcome: 'sent', evidence: 'x' }) },
+  });
+  e.clockOffset = 0;
+  await e.orch.tick();
+  assert.equal(await e.store.getPendingReport(), null, 'not retried forever');
+  assert.equal(await e.store.getRun(), null);
+  assert.equal((await e.store.getRuntime()).running, false);
+  assert.equal((await e.store.getCompletedMap()).job_1.status, 'sent', 'local record kept: never resent');
+  assert.match((await e.store.getStatus()).message, /refused the result/);
+});

@@ -122,3 +122,11 @@ test('validateJob: CC rules', () => {
     assert.equal(validateJob(goodJob({ cc })).ok, false, JSON.stringify(cc).slice(0, 40));
   }
 });
+
+test('profile name is sent as X-Client-Id on every request type; absent when not set', () => {
+  const s = { ...goodSettings(), profileName: 'outlook-A', jobStatePath: '/jobs/{id}' };
+  assert.equal(buildClaimRequest(s).init.headers['X-Client-Id'], 'outlook-A');
+  assert.equal(buildStatusRequest(s, { jobId: '1', status: 'sent' }).init.headers['X-Client-Id'], 'outlook-A');
+  assert.equal(buildJobStateRequest(s, '1').init.headers['X-Client-Id'], 'outlook-A');
+  assert.equal(buildClaimRequest(goodSettings()).init.headers['X-Client-Id'], undefined);
+});

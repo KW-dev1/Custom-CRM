@@ -29,6 +29,7 @@ export function buildHeaders(settings, withBody = false) {
   const h = { Accept: 'application/json' };
   if (withBody) h['Content-Type'] = 'application/json';
   h[s.authHeader] = s.authScheme ? `${s.authScheme} ${s.apiKey}` : s.apiKey;
+  if (s.profileName) h['X-Client-Id'] = s.profileName; // lets one backend serve several Outlook accounts
   return h;
 }
 

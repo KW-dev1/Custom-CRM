@@ -37,25 +37,37 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
     await store.patchRuntime({ running: false });
   }
 
+  /** @returns 'ok' (delivered or nothing pending) | 'pending' (will retry) | 'dropped' (permanently refused) */
   async function flushPending(settings) {
     const p = await store.getPendingReport();
-    if (!p) return true;
+    if (!p) return 'ok';
+    const cleanup = async () => {
+      await store.clearPendingReport();
+      const run = await store.getRun();
+      if (run && run.jobId === p.jobId) {
+        await store.clearRun();
+        await store.clearInflight();
+      }
+    };
     try {
       await api.reportStatus(settings, p);
     } catch (e) {
       await log({ jobId: p.jobId, stage: 'report', ok: false, category: e.kind || 'unknown', message: e.message });
       if (e.kind === 'auth') await pauseAutomation();
+      if (e.kind === 'client') {
+        // A permanent 4xx (e.g. the row was claimed by another profile or edited). Retrying forever would block
+        // every later job, so stop, keep the local record (the email is never resent) and ask for attention.
+        await cleanup();
+        await pauseAutomation();
+        await setStatus(UI_STATUS.FAILED, `The backend refused the result for the last job (${e.message}). Your local record is kept and the email will not be resent. Automation paused; check the sheet, then press Start.`);
+        return 'dropped';
+      }
       await setStatus(UI_STATUS.FAILED, `Result for the last job is saved locally but could not be reported: ${e.message} Will retry before taking new jobs.`);
-      return false;
+      return 'pending';
     }
-    await store.clearPendingReport();
-    const run = await store.getRun();
-    if (run && run.jobId === p.jobId) {
-      await store.clearRun();
-      await store.clearInflight();
-    }
+    await cleanup();
     await log({ jobId: p.jobId, stage: 'report', ok: true, message: p.status });
-    return true;
+    return 'ok';
   }
 
   async function finalize(settings, job, status, message) {
@@ -80,7 +92,9 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
     await store.patchRuntime(patch);
     await log({ jobId: job.id, stage: 'finalize', ok: status === STATUS.SENT, category: status === STATUS.SENT ? null : status, message });
 
-    const reported = await flushPending(settings);
+    const flushed = await flushPending(settings);
+    if (flushed === 'dropped') return; // flushPending already explained it in the status and paused
+    const reported = flushed === 'ok';
     const suffix = (paused ? ' Automation paused: review before restarting.' : '') + (reported ? '' : ' (not yet reported to backend)');
     if (status === STATUS.SENT) await setStatus(UI_STATUS.SENT, `Email sent (verified). ${message}${suffix}`);
     else if (status === STATUS.NEEDS_REVIEW) await setStatus(UI_STATUS.NEEDS_REVIEW, `${message}${suffix}`);
@@ -120,7 +134,9 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
       return { state: 'paused' };
     }
 
-    if (!(await flushPending(settings))) { scheduleNext(cfg.pollSec); return { state: 'report_pending' }; }
+    const flushed = await flushPending(settings);
+    if (flushed === 'dropped') return { state: 'report_refused' };
+    if (flushed === 'pending') { scheduleNext(cfg.pollSec); return { state: 'report_pending' }; }
 
     const run = await store.getRun();
     if (run) {
