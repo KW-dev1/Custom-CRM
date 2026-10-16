@@ -296,11 +296,17 @@
   const findSelectedFolder = (doc) => Array.from(doc.querySelectorAll('[role="treeitem"][data-folder-name][aria-selected="true"]')).find(isVisible) || null;
   const isFolderSelected = (doc, name) => Array.from(doc.querySelectorAll('[role="treeitem"][data-folder-name][aria-selected="true"]')).some((el) => isVisible(el) && folderName(el) === name);
 
-  /** Rows of the message list: label = "<recipient> <subject> <time> <preview>", plus the time span (title holds the full date). */
+  /**
+   * Rows of the message list: label = "<recipient> <subject> <time> <preview>", plus the time span (title holds the full date).
+   * Deliberately NOT filtered by visibility: Outlook may mark panes aria-hidden while they re-render, and a row's content
+   * (subject, recipient, time) is all we use, so a row is trustworthy whether or not it is currently shown.
+   */
   function readMessageRows(doc) {
-    const list = first(doc, SELECTORS.messageList);
-    if (!list) return [];
-    return Array.from(list.querySelectorAll('[role="option"]')).filter(isVisible).map((row) => {
+    const rows = new Set();
+    for (const list of doc.querySelectorAll(SELECTORS.messageList.join(','))) {
+      list.querySelectorAll('[role="option"]').forEach((r) => rows.add(r));
+    }
+    return Array.from(rows).map((row) => {
       const timeSpan = Array.from(row.querySelectorAll('span')).find((sp) => /\d{1,2}:\d{2}/.test(sp.getAttribute('title') || '') || /^\d{1,2}:\d{2}(\s?[AP]M)?$/i.test((sp.textContent || '').trim()));
       return {
         label: (row.getAttribute('aria-label') || row.textContent || '').trim(),
@@ -308,6 +314,19 @@
         timeText: timeSpan ? (timeSpan.textContent || '').trim() : '',
       };
     });
+  }
+
+  /** What the page looks like to the check (no personal data): used to explain an empty message list. */
+  function describeMessageList(doc) {
+    const lists = Array.from(doc.querySelectorAll(SELECTORS.messageList.join(',')));
+    const options = lists.flatMap((l) => Array.from(l.querySelectorAll('[role="option"]')));
+    return {
+      lists: lists.length,
+      options: options.length,
+      visibleOptions: options.filter(isVisible).length,
+      pageVisibility: doc.visibilityState || 'unknown',
+      windowFocused: typeof doc.hasFocus === 'function' ? doc.hasFocus() : null,
+    };
   }
 
   /** Row timestamp in ms, or null. Prefers the full date in the span title; falls back to today's clock text. */
@@ -374,6 +393,6 @@
     MAIL_PREFIX, OEAError, SELECTORS, isVisible, lowestCommonAncestor, findNewMail, findSubject, findCc, findCcToggle, countCompose, findCompose,
     detectReadiness, waitFor, extractText, squash, setInputValue, setEditableText, bodyMatchesLines, appendEditableText, pressKey, findRecipientPill,
     findSendError, findRecipientError, findSentToast,
-    findFolder, findSelectedFolder, isFolderSelected, readMessageRows, parseRowTime, matchSentRow, diagnoseSentRows,
+    findFolder, findSelectedFolder, isFolderSelected, readMessageRows, describeMessageList, parseRowTime, matchSentRow, diagnoseSentRows,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : window);

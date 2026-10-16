@@ -321,3 +321,9 @@ test('a single-line body is fine even with such an editor', async () => {
   const { r } = await run(o, job({ body: 'One single line' }));
   assert.equal(r.outcome, 'sent');
 });
+
+test('Sent Items miss also reports the page state (list found, options, tab visibility, focus)', async () => {
+  const o = await createOutlook({ sentItems: 'missing' });
+  const { r } = await runVerified(o);
+  assert.match(r.message, /Page: message lists found=1; options in page=\d+; visible options=\d+; tab visibility=\w+; window focused=\w+\./);
+});

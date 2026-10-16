@@ -91,7 +91,8 @@
       if (e instanceof OEAError && e.code === 'TIMEOUT') {
         const d = OEA.diagnoseSentRows(OEA.readMessageRows(doc), query());
         const err = new OEAError('SENT_ITEMS_NOT_FOUND', 'The message did not appear in Sent Items.');
-        err.details = `Sent Items check saw: folder opened=${opened ? 'yes' : 'no'}; rows listed=${d.rows}; rows with the subject=${d.subject}; of those with the recipient=${d.recipient}; time readable=${d.timeReadable}; within the time window=${d.inWindow}.`;
+        const l = OEA.describeMessageList(doc);
+        err.details = `Sent Items check saw: folder opened=${opened ? 'yes' : 'no'}; rows listed=${d.rows}; rows with the subject=${d.subject}; of those with the recipient=${d.recipient}; time readable=${d.timeReadable}; within the time window=${d.inWindow}. Page: message lists found=${l.lists}; options in page=${l.options}; visible options=${l.visibleOptions}; tab visibility=${l.pageVisibility}; window focused=${l.windowFocused}.`;
         throw err;
       }
       throw e;

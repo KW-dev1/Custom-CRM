@@ -253,3 +253,21 @@ test('single-line messages and HTML-looking text still work', async () => {
   assert.notEqual(o.OEA.setEditableText(c.body, 'Just one line <b>not bold</b>'), 'failed');
   assert.equal(c.body.querySelector('b'), null);
 });
+
+// ---- reading the message list when the page hides it ----
+test('readMessageRows still reads rows inside an aria-hidden container (Outlook may hide panes while re-rendering)', async () => {
+  const o = await createOutlook();
+  o.doc.getElementById('msglist').remove();
+  o.doc.body.insertAdjacentHTML('beforeend', `<div aria-hidden="true"><div role="listbox" aria-label="Message list">
+    <div role="option" aria-label="a@x.com potential collaboration 10:52 PM hi"><span title="Thu 10/15/2026 10:52 PM">10:52 PM</span></div></div></div>`);
+  assert.equal(o.OEA.readMessageRows(o.doc).length, 1);
+  assert.equal(o.OEA.describeMessageList(o.doc).visibleOptions, 0, 'but it is reported as not visible');
+});
+test('describeMessageList reports lists, options, visibility and focus without any text', async () => {
+  const o = await createOutlook();
+  const d = { ...o.OEA.describeMessageList(o.doc) };
+  assert.equal(d.lists, 1);
+  assert.equal(typeof d.options, 'number');
+  assert.ok(['visible', 'hidden', 'prerender', 'unknown'].includes(d.pageVisibility));
+  assert.ok(Object.keys(d).every((k) => ['lists', 'options', 'visibleOptions', 'pageVisibility', 'windowFocused'].includes(k)));
+});
