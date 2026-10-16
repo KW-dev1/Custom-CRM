@@ -177,26 +177,53 @@
     }
     fireInput(el, null, 'insertText');
   }
-  /** Replace the content of a contenteditable with plain text, preserving line breaks. */
+  // ---- line-structure comparison: a message is only "entered" if its LINES came out right ----
+  const collapse = (t) => String(t).replace(/[\s\u00a0\u200b]+/g, ' ').trim();
+  const lineList = (text) => String(text).split(/\r\n|\r|\n/).map(collapse).filter(Boolean);
+  /**
+   * True when the editor shows our message's non-empty lines, in order, as separate lines (extra lines before or
+   * after, such as a signature, are tolerated). Unlike a whitespace-blind comparison this detects a message whose
+   * line breaks were swallowed and glued into one line.
+   */
+  function bodyMatchesLines(el, text) {
+    const want = lineList(text);
+    const got = lineList(extractText(el));
+    if (!want.length) return true;
+    for (let i = 0; i + want.length <= got.length; i++) {
+      if (want.every((l, k) => got[i + k] === l)) return true;
+    }
+    return false;
+  }
+  function typeViaCommands(el, lines, breakCommand) {
+    const doc = el.ownerDocument;
+    selectContents(el);
+    doc.execCommand('delete');
+    lines.forEach((line, i) => {
+      if (i > 0) doc.execCommand(breakCommand);
+      if (line) doc.execCommand('insertText', false, line);
+    });
+  }
+  /**
+   * Replace the content of a contenteditable with plain text, keeping its line breaks. Tries, in order: real
+   * paragraphs (execCommand insertParagraph), line breaks (insertLineBreak), then building the lines directly in
+   * the DOM. After each attempt the editor is READ BACK and only an attempt whose lines match is accepted.
+   * @returns {string} the method that worked, or 'failed' when none reproduced the message's lines
+   */
   function setEditableText(el, text) {
     const doc = el.ownerDocument;
     const lines = splitLines(text);
     el.focus();
-    let method = 'dom';
+    const attempts = [];
     if (typeof doc.execCommand === 'function') {
-      try {
-        selectContents(el);
-        let ok = doc.execCommand('delete');
-        lines.forEach((line, i) => {
-          if (i > 0) ok = doc.execCommand('insertParagraph') && ok;
-          if (line) ok = doc.execCommand('insertText', false, line) && ok;
-        });
-        method = 'execCommand';
-        if (!ok || squash(extractText(el)) !== squash(text)) method = 'dom';
-      } catch { method = 'dom'; }
+      attempts.push(['execCommand', () => typeViaCommands(el, lines, 'insertParagraph')]);
+      if (lines.length > 1) attempts.push(['execCommand-linebreak', () => typeViaCommands(el, lines, 'insertLineBreak')]);
     }
-    if (method === 'dom') fillByDom(el, lines);
-    return method;
+    attempts.push(['dom', () => fillByDom(el, lines)]);
+    for (const [name, run] of attempts) {
+      try { run(); } catch { continue; }
+      if (bodyMatchesLines(el, text)) return name;
+    }
+    return 'failed';
   }
   /**
    * Type text at the END of a contenteditable without touching its existing content. Recipient
@@ -345,7 +372,7 @@
 
   Object.assign(OEA, {
     MAIL_PREFIX, OEAError, SELECTORS, isVisible, lowestCommonAncestor, findNewMail, findSubject, findCc, findCcToggle, countCompose, findCompose,
-    detectReadiness, waitFor, extractText, squash, setInputValue, setEditableText, appendEditableText, pressKey, findRecipientPill,
+    detectReadiness, waitFor, extractText, squash, setInputValue, setEditableText, bodyMatchesLines, appendEditableText, pressKey, findRecipientPill,
     findSendError, findRecipientError, findSentToast,
     findFolder, findSelectedFolder, isFolderSelected, readMessageRows, parseRowTime, matchSentRow, diagnoseSentRows,
   });

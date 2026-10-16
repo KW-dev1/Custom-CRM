@@ -28,12 +28,13 @@ const SHELL = `<!doctype html><html><body>
  * opts.pre: 'compose' => a draft is already open; 'signedOut' | 'noShell'
  * opts.noSend: omit the Send button
  * opts.noCcToggle: omit the "Cc" button; opts.ccResolve=false: Cc recipients never resolve
+ * opts.bodyEditor: 'normal' | 'flatten' (an editor that turns every inserted paragraph into plain text: line breaks are lost)
  * opts.sentItems: how the Sent Items folder behaves after Send:
  *   'normal' (row appears) | 'delayed' (row appears after 700ms) | 'missing' (never) | 'old' (only an old row with
  *   the same subject) | 'name' (shows a display name, not an address) | 'wrong-recipient' | 'no-folder'
  */
 export async function createOutlook(opts = {}) {
-  const { sendMode = 'close', resolve = true, resolveOn = 'enter', pre = null, noSend = false, noCcToggle = false, ccResolve = true, sentItems = 'normal', url = 'https://outlook.live.com/mail/0/' } = opts;
+  const { sendMode = 'close', resolve = true, resolveOn = 'enter', pre = null, noSend = false, noCcToggle = false, ccResolve = true, sentItems = 'normal', bodyEditor = 'normal', url = 'https://outlook.live.com/mail/0/' } = opts;
   const dom = new JSDOM(pre === 'signedOut' ? '<body><a data-task="signin" href="#">Sign in</a></body>' : pre === 'noShell' ? '<body><p>Loading…</p></body>' : SHELL,
     { url, runScripts: 'outside-only', pretendToBeVisual: true });
   const { window } = dom;
@@ -98,6 +99,10 @@ export async function createOutlook(opts = {}) {
       <div role="alert"></div>`;
     doc.body.appendChild(wrap);
     const alertBox = wrap.querySelector('[role="alert"]');
+    if (bodyEditor === 'flatten') {
+      const body = wrap.querySelector('[role="textbox"][aria-label^="Message body"]');
+      body.appendChild = (node) => window.Node.prototype.appendChild.call(body, doc.createTextNode(node.textContent)); // paragraphs/breaks are lost
+    }
     const ccField = wrap.querySelector('[aria-label="Cc"][contenteditable]');
     const toggle = Array.from(wrap.querySelectorAll('button')).find((b) => b.textContent === 'Cc');
     if (toggle) toggle.addEventListener('click', () => { c.ccToggleClicks += 1; ccField.hidden = false; });

@@ -67,6 +67,7 @@
     }
     if ((compose.subject.value || '') !== job.subject) problems.push('Subject does not match.');
     if (!OEA.squash(OEA.extractText(compose.body)).includes(OEA.squash(job.body))) problems.push('Body does not match.');
+    else if (!OEA.bodyMatchesLines(compose.body, job.body)) problems.push('Body line breaks do not match.');
     if (compose.send.disabled || compose.send.getAttribute('aria-disabled') === 'true') problems.push('The Send button is disabled.');
     return problems;
   }
@@ -155,6 +156,9 @@
       OEA.setEditableText(compose.body, job.body);
       if (!OEA.squash(OEA.extractText(compose.body)).includes(OEA.squash(job.body))) {
         throw new OEAError('BODY_FAILED', 'Could not populate the message body.');
+      }
+      if (!OEA.bodyMatchesLines(compose.body, job.body)) {
+        throw new OEAError('BODY_FORMAT_FAILED', 'Outlook\'s editor did not keep the message\'s line breaks (they came out merged into fewer lines). Nothing was sent.');
       }
 
       await ctx.markStage(job.id, 'validating');

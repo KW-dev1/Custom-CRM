@@ -32,6 +32,10 @@ document.querySelector('[aria-label="New mail"]').addEventListener('click', () =
     + '<div role="group"><div aria-label="Cc" contenteditable="true" tabindex="0" hidden></div></div>'
     + '<input aria-label="Subject" placeholder="Add a subject" type="text"><div role="textbox" aria-label="Message body" contenteditable="true" tabindex="0"></div><div role="alert"></div>';
   document.body.appendChild(w);
+  // BODY_MODE=swallow-paragraph simulates a rich editor that intercepts "new paragraph" and cancels it.
+  if (window.__BODY_MODE === 'swallow-paragraph') {
+    w.querySelector('[aria-label^="Message body"]').addEventListener('beforeinput', (e) => { if (e.inputType === 'insertParagraph') e.preventDefault(); });
+  }
   const ccToggle = [...w.querySelectorAll('button')].find((b) => b.textContent === 'Cc');
   ccToggle.addEventListener('click', () => { w.querySelector('[aria-label="Cc"][contenteditable]').hidden = false; });
   const typed = (f) => [...f.childNodes].filter((n) => n.nodeType === 3).map((n) => n.data).join('');
