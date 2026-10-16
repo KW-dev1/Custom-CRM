@@ -1,5 +1,7 @@
 # Custom CRM
 
+> **New here? Read the [User guide](docs/USER_GUIDE.md)**: install, set up the spreadsheet, run, test, daily use and troubleshooting, step by step.
+
 A custom system, built in parts:
 
 | Part | Stack | Status |
