@@ -131,6 +131,18 @@ Alice Smith <alice@example.com>, bob@example.com
 
 The message is **plain text**; line breaks and blank lines are kept. Bold, colours, bullets, HTML, images and attachments are not supported.
 
+**Easiest way: write the whole message on ONE line and mark the breaks.** Type `\n` (a backslash followed by the letter n)
+wherever you want a line break, and `\n\n` for a blank line between paragraphs. `<br>` works the same way. Spaces around a marker are ignored.
+This avoids every cell-editing and pasting problem, and works in Google Sheets and Excel.
+
+| You type in the cell | The email shows |
+|---|---|
+| `Hi Ann,\n\nQuick note about Acme.\n\nThanks,\nKeith` | `Hi Ann,`<br>*(blank line)*<br>`Quick note about Acme.`<br>*(blank line)*<br>`Thanks,`<br>`Keith` |
+| `Hi Ann,<br><br>Quick note.<br>Keith` | `Hi Ann,`<br>*(blank line)*<br>`Quick note.`<br>`Keith` |
+
+Only that exact backslash-n (or `<br>`) is a marker; a lone `\` or `/` is left alone. The marker is **not** applied to the Subject, which stays one line.
+The other ways below (real line breaks inside the cell) also work.
+
 **Google Sheets**
 
 - **Pasting a message:** **double-click the cell** (or select it and press **Enter**) so the cursor is *inside* the cell, then paste.
@@ -401,7 +413,7 @@ How it behaves:
 | `Could not reach the backend` | The backend is not running, or the URL/port is wrong. |
 | Nothing happens after **Start** | Outlook tab missing or signed out; no row has H, I and G filled with J empty; or the next-fetch time has not arrived (the message says when). |
 | Row marked `failed` instantly (a fraction of a second) | A draft was already open, or **Duplicate delivery** from a previous failure (fixed: failed rows now retry; update to the latest code). |
-| The whole message arrives on ONE line | Either the cell holds one line only (check the formula bar: the lines may have been split into rows below), or Outlook merged them. The extension now reads the editor back and refuses to send a message whose lines came out merged (`BODY_FORMAT_FAILED`). |
+| The whole message arrives on ONE line | The cell holds one line with no break markers: type `\n` (backslash n) where you want breaks, or `<br>`. Otherwise the lines may have been split into rows below the cell, or Outlook merged them. The extension now reads the editor back and refuses to send a message whose lines came out merged (`BODY_FORMAT_FAILED`). |
 | The message arrives in pieces, or rows below it contain fragments | The text was pasted while the cell was only selected, so Google Sheets split it into rows. Delete the fragments, put the whole message back into ONE cell (double-click the cell first, then paste). |
 | Email composes but `RECIPIENT_FAILED` | Update the extension to the latest version (older versions mis-detected recipient chips) and reload it. |
 | `needs_review` although the email arrived | Outlook was slow to list it in Sent Items. Set J to `sent` by hand; consider unticking the Sent Items confirmation. |
