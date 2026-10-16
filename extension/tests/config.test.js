@@ -33,3 +33,9 @@ test('origin pattern', () => {
   assert.equal(backendOriginPattern('https://api.example.com/v1'), 'https://api.example.com/*');
   assert.equal(backendOriginPattern('nope'), null);
 });
+
+test('verifySentItems defaults to on and can be turned off', () => {
+  assert.equal(normalizeSettings(goodSettings()).verifySentItems, true);
+  assert.equal(normalizeSettings({ ...goodSettings(), verifySentItems: false }).verifySentItems, false);
+  assert.equal(normalizeSettings({ ...goodSettings(), verifySentItems: undefined }).verifySentItems, true);
+});

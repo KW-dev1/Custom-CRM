@@ -8,7 +8,7 @@ import {
   PHASE, startRun, advanceRun, getCompleted, recordCompleted, classifyInterrupted, resultToReport, STAGE,
 } from './state.js';
 
-const DEFAULTS = { sendTimeoutMs: 100000, staleMs: 120000, pollSec: 60, pauseAfterFailures: 3 };
+const DEFAULTS = { sendTimeoutMs: 180000, staleMs: 120000, pollSec: 60, pauseAfterFailures: 3 };
 const NO_RECEIVER = /receiving end does not exist|could not establish connection/i;
 
 const withTimeout = (p, ms) => new Promise((resolve, reject) => {
@@ -219,7 +219,7 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
     const stopKeepAlive = keepAlive();
     let rep;
     try {
-      const result = await withTimeout(tabs.send(tab.id, { type: 'OEA_SEND_JOB', job }), cfg.sendTimeoutMs);
+      const result = await withTimeout(tabs.send(tab.id, { type: 'OEA_SEND_JOB', job, options: { verifySentItems: settings.verifySentItems } }), cfg.sendTimeoutMs);
       rep = resultToReport(result);
     } catch (e) {
       const inflight = await store.getInflight();

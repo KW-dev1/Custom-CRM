@@ -54,11 +54,13 @@ async function loadForm() {
   const s = await store.getSettings();
   for (const f of FIELDS) $(f).value = s[f] ?? DEFAULT_SETTINGS[f] ?? '';
   $('statusValues').value = JSON.stringify(s.statusValues, null, 2);
+  $('verifySentItems').checked = s.verifySentItems;
 }
 
 function readForm() {
   const raw = {};
   for (const f of FIELDS) raw[f] = $(f).value;
+  raw.verifySentItems = $('verifySentItems').checked;
   let statusError = null;
   try { raw.statusValues = JSON.parse($('statusValues').value || '{}'); }
   catch { statusError = 'Status values must be valid JSON.'; }

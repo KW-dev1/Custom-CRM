@@ -39,3 +39,5 @@ summary { cursor: pointer; color: var(--muted); }
 form .buttons { margin-top: 12px; }
 .small { font-size: 12px; margin: 0 0 8px; }
 #historyMsg { display: block; margin-top: 6px; color: var(--muted); }
+form label.check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; }
+form label.check input { margin-top: 3px; }

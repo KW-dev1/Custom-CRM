@@ -41,6 +41,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   statusValues: { ...DEFAULT_STATUS_VALUES },
   fetchMinMinutes: 10, // the backend is asked for one job at a random time between min and max minutes
   fetchMaxMinutes: 20,
+  verifySentItems: true, // after Send, confirm the message is listed in Sent Items (stricter, ~10 s per email)
   enabled: false,
 });
 
@@ -56,6 +57,7 @@ export function normalizeSettings(raw = {}) {
   s.fetchMinMinutes = Number(s.fetchMinMinutes);
   s.fetchMaxMinutes = Number(s.fetchMaxMinutes);
   s.enabled = Boolean(s.enabled);
+  s.verifySentItems = s.verifySentItems !== false;
   return s;
 }
 

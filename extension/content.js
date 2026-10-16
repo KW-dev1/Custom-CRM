@@ -24,7 +24,8 @@
         const jobId = job && typeof job.id === 'string' ? job.id : 'unknown';
         let result;
         try {
-          result = await OEA.processJob(job, { doc: document, loc: location, guard, markStage });
+          const options = { verifySentItems: Boolean(msg.options && msg.options.verifySentItems === true) };
+          result = await OEA.processJob(job, { doc: document, loc: location, guard, markStage, options });
         } catch (e) {
           result = { outcome: guard.processed.has(jobId) ? 'uncertain' : 'failed', sendClicked: guard.processed.has(jobId), code: 'UNEXPECTED', message: `Unexpected error: ${e && e.message}` };
         }

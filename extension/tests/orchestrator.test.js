@@ -321,3 +321,21 @@ test('clearHistory is refused while a job is in flight or a report is pending', 
   const pending = setup({ stored: { pendingReport: { jobId: 'x', status: 'sent' }, completed: { a: { status: 'sent', at: 1 } } } });
   assert.equal((await pending.orch.clearHistory()).ok, false);
 });
+
+test('the Sent Items setting is passed to the Outlook tab with the job (default on)', async () => {
+  const e = setup({ sendResult: { outcome: 'sent', evidence: 'x' } });
+  await e.orch.tick();
+  assert.deepEqual(e.calls.send.find((m) => m.type === 'OEA_SEND_JOB').options, { verifySentItems: true });
+});
+test('...and can be turned off', async () => {
+  const e = setup({ sendResult: { outcome: 'sent', evidence: 'x' } });
+  await e.area.set({ settings: { apiBaseUrl: 'https://api.example.com', apiKey: 'k-12345', enabled: true, verifySentItems: false } });
+  await e.orch.tick();
+  assert.deepEqual(e.calls.send.find((m) => m.type === 'OEA_SEND_JOB').options, { verifySentItems: false });
+});
+test('uncertain Sent Items result from the page becomes needs_review and pauses', async () => {
+  const e = setup({ sendResult: { outcome: 'uncertain', sendClicked: true, code: 'SENT_ITEMS_NOT_FOUND', message: 'not found in Sent Items' } });
+  await e.orch.tick();
+  assert.equal(e.calls.reports.at(-1).status, 'needs_review');
+  assert.equal((await e.store.getRuntime()).running, false);
+});

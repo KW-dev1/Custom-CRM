@@ -33,6 +33,7 @@ In the popup, under **Settings**:
 |---|---|
 | Backend API base URL | `https://…` (plain `http://` is accepted only for `localhost`/`127.0.0.1`). |
 | API key / token | Stored in `chrome.storage.local`. Never logged, never sent anywhere except the backend. |
+| Confirm each send in Sent Items | On by default. Stricter and adds ~10 s per email; see *How success is verified*. |
 | Advanced → Auth header / scheme | Default `Authorization: Bearer <key>`. Clear the scheme to send the raw key (e.g. header `X-Api-Key`). |
 | Advanced → claim/status/state paths & methods | **Placeholders**, replace with your real endpoints. |
 | Advanced → Fetch every (min/max minutes) | The backend is asked for **one job at a random time between min and max minutes** (default 10 and 20) after the previous fetch. Not a way around Outlook's own limits. |
@@ -103,9 +104,16 @@ Auth: header from settings, default `Authorization: Bearer <key>`. HTTP 401/403 
 
 ## How success is verified
 
-After the single Send click the extension waits (bounded, 20 s) for the **compose window to close**
-or a **"message sent" notification**. An error banner or a timeout yields `needs_review`. It does
-**not** currently confirm via Sent Items.
+1. After the single Send click the extension waits (bounded, 20 s) for the **compose window to close** or a
+   **"message sent" notification**. An error banner or a timeout yields `needs_review`.
+2. With **Confirm each send in Sent Items** on (the default), it then opens the **Sent Items** folder and waits
+   up to 30 s for a message with the **same subject**, sent **within the last minute or so**, and, when the row shows
+   an address rather than a contact's name, the **same recipient**. Only then is the job `sent`. Not found in time
+   (or the folder control is missing) means `needs_review`, never an automatic resend. It then returns to the folder
+   you were in. Turn the checkbox off to rely on step 1 only.
+
+Limits of step 2: it needs the folder tree visible (a very narrow window can collapse it), reads the English
+labels, and cannot compare recipients when Outlook shows a contact's display name.
 
 ## Project layout
 
@@ -152,6 +160,7 @@ Use a **test** Outlook account and a test backend queue with addresses you contr
 - [ ] Backend permission prompt appears for only your backend origin.
 - [ ] No Outlook tab → *Waiting for Outlook*. Signed-out Outlook → waiting, no action taken.
 - [ ] One job → New mail opens; **To** (not Cc/Bcc), subject and multi-line body are correct; with 2+ addresses, the extras appear under **Cc**; Send clicked once; mail arrives; backend shows `sent`.
+- [ ] With Sent Items confirmation on: the status becomes `sent` only after the message appears in Sent Items, and Outlook returns to the folder you were in.
 - [ ] Check blank-line fidelity and that no signature/formatting is damaged.
 - [ ] Invalid recipient (e.g. nonexistent domain) → no send, `failed`.
 - [ ] Leave a draft open → job fails with *compose window already open*, nothing sent.
@@ -169,6 +178,8 @@ Use a **test** Outlook account and a test backend queue with addresses you contr
 | *Waiting for Outlook* | Open and sign in at `outlook.live.com/mail/`; reload tabs opened before install. |
 | *Outlook tab is not responding* | Reload the Outlook tab (content script not injected). |
 | *Could not find the "New mail" button* / compose never appears | Outlook UI/language changed; update `SELECTORS`/`LABELS` in `outlook-dom.js`. |
+| *Message was not found in Sent Items* (`needs_review`) | The message may still have been sent: open Sent Items and check. If Outlook is just slow, untick **Confirm each send in Sent Items**. |
+| *Could not find the Sent Items folder* | The folder pane is collapsed or Outlook's labels changed; widen the window, or untick the Sent Items confirmation. |
 | *Could not find the Cc control* | Outlook's Cc toggle changed; adjust `SELECTORS.cc` / `LABELS.ccToggle` in `outlook-dom.js`. |
 | *Recipient did not resolve* | Outlook may resolve chips differently; adjust `enterRecipient`/`findRecipientPill`. |
 | *Needs review* | Check **Sent Items**, then decide manually; press **Start** to resume. |
@@ -190,6 +201,7 @@ Use a **test** Outlook account and a test backend queue with addresses you contr
 
 - Only `outlook.live.com` (personal Outlook), English UI, one Outlook tab used at a time.
 - Selectors/recipient-chip detection are heuristics validated only against a simulated page.
-- Success evidence is the compose window closing or a sent toast; Sent Items is not consulted.
+- Success evidence is the compose window closing or a sent toast, plus the optional Sent Items confirmation.
+- Rows are sent strictly one at a time; Sent Items matching assumes at least about a minute between emails with the same subject.
 - A sleeping computer/closed browser pauses processing; there is no job queue in the extension.
 - Does not bypass Outlook sending limits, MFA, CAPTCHAs or other Microsoft challenges.

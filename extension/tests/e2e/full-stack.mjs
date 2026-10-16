@@ -38,8 +38,28 @@ const port = server.address().port;
 // (no role=textbox), resolved recipients are span[contenteditable=false][aria-label=address] INSIDE the field,
 // Cc/Bcc are plain buttons, and Enter or ";" turns the typed text into a chip.
 const PAGE = `<!doctype html><html><body><div role="main"><button aria-label="New mail">New mail</button></div>
+<div role="tree"><div role="treeitem" data-folder-name="inbox" aria-selected="true"><span>Inbox</span></div><div role="treeitem" data-folder-name="sent items" aria-selected="false"><span>Sent Items</span></div></div>
+<div role="region"><div role="listbox" aria-label="Message list" id="msglist"></div></div>
 <script>
 window.__sent = [];
+window.__folderClicks = [];
+const mb = { cur: 'inbox', sent: [] };
+const pad = (n) => String(n).padStart(2, '0');
+const clock = (d) => ((d.getHours() + 11) % 12 + 1) + ':' + pad(d.getMinutes()) + ' ' + (d.getHours() < 12 ? 'AM' : 'PM');
+const full = (d) => ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()] + ' ' + (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear() + ' ' + clock(d);
+function renderList() {
+  const list = document.getElementById('msglist'); list.innerHTML = '';
+  const rows = mb.cur === 'inbox' ? [{ who: 'news@example.com', subject: 'Weekly digest', at: new Date(Date.now() - 3600e3) }] : mb.sent;
+  rows.forEach((m) => { const r = document.createElement('div'); r.setAttribute('role', 'option');
+    r.setAttribute('aria-label', m.who + ' ' + m.subject + ' ' + clock(m.at) + ' preview');
+    r.innerHTML = '<div><span></span><span></span><span class="t"></span><span>preview</span></div>';
+    const sp = r.querySelectorAll('span'); sp[0].textContent = m.who; sp[1].textContent = m.subject; sp[2].textContent = clock(m.at); sp[2].setAttribute('title', full(m.at));
+    list.appendChild(r); });
+}
+document.querySelectorAll('[role=treeitem]').forEach((it) => it.addEventListener('click', () => {
+  mb.cur = it.getAttribute('data-folder-name'); window.__folderClicks.push(mb.cur);
+  document.querySelectorAll('[role=treeitem]').forEach((x) => x.setAttribute('aria-selected', String(x === it))); renderList(); }));
+renderList();
 document.querySelector('[aria-label="New mail"]').addEventListener('click', () => setTimeout(() => {
   const w = document.createElement('div'); w.id = 'compose';
   w.innerHTML = '<div><button aria-label="Send" type="button">Send</button><button aria-label="Discard" type="button">Discard</button></div>'
@@ -60,6 +80,7 @@ document.querySelector('[aria-label="New mail"]').addEventListener('click', () =
   }
   w.querySelector('button[aria-label="Send"]').addEventListener('click', () => {
     const chips = (label) => [...w.querySelectorAll('[aria-label="' + label + '"][contenteditable] span[contenteditable="false"]')].map((x) => x.getAttribute('aria-label'));
+    setTimeout(() => { mb.sent.unshift({ who: chips('To')[0], subject: w.querySelector('input').value, at: new Date() }); if (mb.cur === 'sent items') renderList(); }, 300);
     window.__sent.push({ to: chips('To'), cc: chips('Cc'), subject: w.querySelector('input').value, body: w.querySelector('[aria-label^="Message body"]').innerText });
     setTimeout(() => w.remove(), 50);
   });
@@ -89,13 +110,14 @@ await popup.waitForTimeout(500);
 const sent = await outlook.evaluate(() => window.__sent);
 const rt = await sw.evaluate(() => chrome.storage.local.get(['runtime', 'status']));
 console.log('Outlook received:', JSON.stringify(sent));
+console.log('folder clicks   :', JSON.stringify(await outlook.evaluate(() => window.__folderClicks)), '(expected sent items, then back to inbox)');
 console.log('sheet statuses  :', JSON.stringify(sheet.rows.map((r) => r.status)));
 console.log('sheet note[0]   :', sheet.rows[0].note);
 console.log('extension status:', rt.status.code, '|', rt.status.message);
 const gapMin = (rt.runtime.nextClaimAt - Date.now()) / 60000;
 console.log('next fetch in   :', gapMin.toFixed(1), 'min (expected 10-20)');
 const ok = sent.length === 1 && sent[0].to.join() === 'first@client.com' && sent[0].cc.join() === 'second@client.com,third@client.com,fourth@client.com'
-  && sheet.rows[0].status === 'sent' && sheet.rows[1].status === '' && gapMin > 9.5 && gapMin <= 20.1;
+  && sheet.rows[0].status === 'sent' && /Sent Items/.test(sheet.rows[0].note) && sheet.rows[1].status === '' && gapMin > 9.5 && gapMin <= 20.1;
 console.log(ok ? 'RESULT: PASS' : 'RESULT: FAIL');
 await ctx.close(); server.close();
 process.exit(ok ? 0 : 1);
