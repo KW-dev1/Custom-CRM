@@ -127,6 +127,22 @@ Alice Smith <alice@example.com>, bob@example.com
 - **A malformed address anywhere in the cell** (for example `bob@` or `a@@b.com`) makes the row `failed` with a
   reason in the note column. The system refuses to send to a partly understood recipient list.
 
+### Writing multi-line messages in column I
+
+The message is **plain text**; line breaks and blank lines are kept. Bold, colours, bullets, HTML, images and attachments are not supported.
+
+**Google Sheets**
+
+- **Pasting a message:** **double-click the cell** (or select it and press **Enter**) so the cursor is *inside* the cell, then paste.
+  If you paste while the cell is only *selected*, Google Sheets splits the text at every line break and spreads it over **many rows**.
+  That leaves your message in pieces and creates junk rows; if it happens, undo (Ctrl+Z) and paste again in edit mode.
+- **Typing a message:** press **Ctrl+Enter** (Windows) to start a new line inside the cell; two in a row make a blank line between paragraphs.
+- **Checking it:** click the cell and look at the formula bar (or turn on *Format > Wrapping > Wrap*). The whole message, line breaks included,
+  must be in that one cell. Never leave fragments of a message in the rows below it.
+- Writing the message in Notepad first and pasting it in edit mode is the most reliable way.
+
+**Excel:** press **Alt+Enter** for a new line inside a cell.
+
 ### What the backend does with each row
 
 | Row state | What happens |
@@ -358,7 +374,7 @@ How it behaves:
 | `VALIDATION_FAILED` | The filled-in message did not match the job. Nothing was sent. | Retry; report if it repeats. |
 | `SEND_ERROR_SHOWN` | Outlook showed an error after Send. | **Check Sent Items** (needs review). |
 | `NO_CONFIRMATION` | Send clicked, no confirmation in time. | **Check Sent Items** (needs review). |
-| `SENT_ITEMS_NOT_FOUND` | Compose closed but the message was not listed in Sent Items in 30 s. | **Check Sent Items.** If Outlook is just slow, untick *Confirm each send in Sent Items*. |
+| `SENT_ITEMS_NOT_FOUND` | Compose closed but the message was not matched in Sent Items in 30 s. The message ends with counts of what the check saw (rows listed, with the subject, with the recipient, within the time window). | **Check Sent Items.** If the email is there, the check is giving a false alarm: untick *Confirm each send in Sent Items* and send the counts to the maintainer. |
 | `SENT_ITEMS_UNAVAILABLE` | The Sent Items folder entry was not visible. | Widen the Outlook window so the folder list shows, or untick the confirmation. |
 | *Duplicate delivery ... already processed locally (sent / needs_review)* | The extension remembers sending this row. | If you really want to resend: **Clear job history**. |
 | *The backend refused the result for the last job* | Row claimed by another profile, edited, or removed. Automation paused; email **not** resent. | Check the sheet, then **Start**. |
@@ -384,6 +400,7 @@ How it behaves:
 | `Could not reach the backend` | The backend is not running, or the URL/port is wrong. |
 | Nothing happens after **Start** | Outlook tab missing or signed out; no row has H, I and G filled with J empty; or the next-fetch time has not arrived (the message says when). |
 | Row marked `failed` instantly (a fraction of a second) | A draft was already open, or **Duplicate delivery** from a previous failure (fixed: failed rows now retry; update to the latest code). |
+| The message arrives in pieces, or rows below it contain fragments | The text was pasted while the cell was only selected, so Google Sheets split it into rows. Delete the fragments, put the whole message back into ONE cell (double-click the cell first, then paste). |
 | Email composes but `RECIPIENT_FAILED` | Update the extension to the latest version (older versions mis-detected recipient chips) and reload it. |
 | `needs_review` although the email arrived | Outlook was slow to list it in Sent Items. Set J to `sent` by hand; consider unticking the Sent Items confirmation. |
 | The backend log says `file is open in Excel` | Close Excel (the lock file `~$yourfile.xlsx` must disappear). |
