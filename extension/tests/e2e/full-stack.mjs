@@ -15,7 +15,7 @@ const ext = fileURLToPath(new URL('../../', import.meta.url));
 const KEY = 'abcdefghijklmnop1234';
 
 const sheet = new FakeSheet([
-  { emails: '["first@client.com","second@client.com","third@client.com"]', subject: 'Quarterly follow-up', body: 'Hi team,\n\nFollowing up on our call.\n\nThanks' },
+  { emails: '["first@client.com","second@client.com","third@client.com","fourth@client.com"]', subject: 'Quarterly follow-up', body: 'Hi team,\n\nFollowing up on our call.\n\nThanks' },
   { emails: 'solo@client.com', subject: 'Second row', body: 'Should wait for the next 10-20 min window.' },
 ]);
 const cfg = testConfig();
@@ -31,23 +31,33 @@ harness.use(app);
 const server = await new Promise((r) => { const s = harness.listen(0, '127.0.0.1', () => r(s)); });
 const port = server.address().port;
 
+// Mirrors the structure captured from a real Outlook Web compose window: To/Cc are contenteditable divs
+// (no role=textbox), resolved recipients are span[contenteditable=false][aria-label=address] INSIDE the field,
+// Cc/Bcc are plain buttons, and Enter or ";" turns the typed text into a chip.
 const PAGE = `<!doctype html><html><body><div role="main"><button aria-label="New mail">New mail</button></div>
 <script>
 window.__sent = [];
 document.querySelector('[aria-label="New mail"]').addEventListener('click', () => setTimeout(() => {
   const w = document.createElement('div'); w.id = 'compose';
-  w.innerHTML = '<div><button aria-label="Send">Send</button><button aria-label="Cc">Cc</button></div><div class="r" data-well="to"></div><div role="textbox" aria-label="To" contenteditable="true"></div><div class="r" data-well="cc"></div><div role="textbox" aria-label="Cc" contenteditable="true" hidden></div><input aria-label="Subject"><div role="textbox" aria-label="Message body, press Alt+F10 to exit" contenteditable="true"></div>';
+  w.innerHTML = '<div><button aria-label="Send" type="button">Send</button><button aria-label="Discard" type="button">Discard</button></div>'
+    + '<div><button type="button" role="button">To</button><div role="group"><div aria-label="To" contenteditable="true" tabindex="0"></div></div><button type="button">Cc</button><button type="button">Bcc</button></div>'
+    + '<div role="group"><div aria-label="Cc" contenteditable="true" tabindex="0" hidden></div></div>'
+    + '<input aria-label="Subject" placeholder="Add a subject" type="text"><div role="textbox" aria-label="Message body" contenteditable="true" tabindex="0"></div><div role="alert"></div>';
   document.body.appendChild(w);
-  w.querySelector('button[aria-label="Cc"]').addEventListener('click', () => { w.querySelector('[role=textbox][aria-label="Cc"]').hidden = false; });
-  for (const [label, well] of [['To', 'to'], ['Cc', 'cc']]) {
-    const f = w.querySelector('[role=textbox][aria-label="' + label + '"]');
-    f.addEventListener('keydown', (e) => { if (e.key !== 'Enter') return; const t = f.textContent.replace(/;$/, '').trim(); if (!t) return;
-      const p = document.createElement('span'); p.setAttribute('role', 'button'); p.setAttribute('aria-label', t); p.textContent = t;
-      w.querySelector('.r[data-well=' + well + ']').appendChild(p); f.textContent = ''; });
+  const ccToggle = [...w.querySelectorAll('button')].find((b) => b.textContent === 'Cc');
+  ccToggle.addEventListener('click', () => { w.querySelector('[aria-label="Cc"][contenteditable]').hidden = false; });
+  const typed = (f) => [...f.childNodes].filter((n) => n.nodeType === 3).map((n) => n.data).join('');
+  const resolve = (f) => { const t = typed(f).replace(/;$/, '').trim(); if (!t) return;
+    [...f.childNodes].filter((n) => n.nodeType === 3).forEach((n) => n.remove());
+    const chip = document.createElement('span'); chip.setAttribute('contenteditable', 'false'); chip.setAttribute('aria-label', t); chip.textContent = t; f.appendChild(chip); };
+  for (const label of ['To', 'Cc']) {
+    const f = w.querySelector('[aria-label="' + label + '"][contenteditable]');
+    f.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); resolve(f); } });
+    f.addEventListener('input', () => { if (typed(f).endsWith(';')) resolve(f); });
   }
   w.querySelector('button[aria-label="Send"]').addEventListener('click', () => {
-    const pills = (well) => [...w.querySelectorAll('.r[data-well=' + well + '] span')].map((x) => x.textContent);
-    window.__sent.push({ to: pills('to'), cc: pills('cc'), subject: w.querySelector('input').value, body: w.querySelector('[aria-label^="Message body"]').innerText });
+    const chips = (label) => [...w.querySelectorAll('[aria-label="' + label + '"][contenteditable] span[contenteditable="false"]')].map((x) => x.getAttribute('aria-label'));
+    window.__sent.push({ to: chips('To'), cc: chips('Cc'), subject: w.querySelector('input').value, body: w.querySelector('[aria-label^="Message body"]').innerText });
     setTimeout(() => w.remove(), 50);
   });
 }, 20));
@@ -81,7 +91,7 @@ console.log('sheet note[0]   :', sheet.rows[0].note);
 console.log('extension status:', rt.status.code, '|', rt.status.message);
 const gapMin = (rt.runtime.nextClaimAt - Date.now()) / 60000;
 console.log('next fetch in   :', gapMin.toFixed(1), 'min (expected 10-20)');
-const ok = sent.length === 1 && sent[0].to.join() === 'first@client.com' && sent[0].cc.join() === 'second@client.com,third@client.com'
+const ok = sent.length === 1 && sent[0].to.join() === 'first@client.com' && sent[0].cc.join() === 'second@client.com,third@client.com,fourth@client.com'
   && sheet.rows[0].status === 'sent' && sheet.rows[1].status === '' && gapMin > 9.5 && gapMin <= 20.1;
 console.log(ok ? 'RESULT: PASS' : 'RESULT: FAIL');
 await ctx.close(); server.close();
