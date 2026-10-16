@@ -7,6 +7,9 @@
 import { createRequire } from 'node:module';
 import http from 'node:http';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 const require = createRequire((process.env.PLAYWRIGHT_DIR || fileURLToPath(new URL('../../../', import.meta.url))) + '/');
 const { chromium } = require('playwright');
 const ext = fileURLToPath(new URL('../../', import.meta.url));
@@ -50,7 +53,7 @@ document.querySelector('[aria-label="New mail"]').addEventListener('click', () =
 }, 20));
 </script></body></html>`;
 
-const ctx = await chromium.launchPersistentContext((process.env.TMPDIR || '/tmp') + '/oea-e2e-profile-' + MODE, {
+const ctx = await chromium.launchPersistentContext(mkdtempSync(join(tmpdir(), `oea-e2e-${MODE}-`)) /* fresh profile: a reused one remembers completed jobs */, {
   headless: false, executablePath: CHROME,
   args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`, '--no-sandbox', '--headless=new'],
 });

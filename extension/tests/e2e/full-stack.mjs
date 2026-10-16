@@ -4,6 +4,9 @@
 // Env: PLAYWRIGHT_DIR (dir containing node_modules/playwright), CHROME_PATH (chromium binary).
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import express from 'express';
 import { createApp } from '../../../backend/src/app.js';
 import { createJobService } from '../../../backend/src/jobs.js';
@@ -63,7 +66,7 @@ document.querySelector('[aria-label="New mail"]').addEventListener('click', () =
 }, 20));
 </script></body></html>`;
 
-const ctx = await chromium.launchPersistentContext((process.env.TMPDIR || '/tmp') + '/oea-fullstack-profile', {
+const ctx = await chromium.launchPersistentContext(mkdtempSync(join(tmpdir(), 'oea-fullstack-')), { // fresh profile each run (local duplicate memory would block a repeat)
   headless: false, executablePath: process.env.CHROME_PATH || undefined,
   args: [`--disable-extensions-except=${ext}`, `--load-extension=${ext}`, '--no-sandbox', '--headless=new'],
 });
