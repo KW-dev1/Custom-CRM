@@ -371,6 +371,7 @@ How it behaves:
 | `COMPOSE_ALREADY_OPEN` | A draft is already open. | Close or discard it. |
 | `NEW_MAIL_MISSING` / `CC_FIELD_MISSING` | A button was not found. | Outlook's layout changed or the window is very narrow; see Troubleshooting. |
 | `RECIPIENT_FAILED` / `RECIPIENT_REJECTED` | Outlook did not turn the typed address into a recipient. | Check the address; send the console log if it repeats. |
+| `BODY_FORMAT_FAILED` | Outlook's editor did not keep the message's line breaks (they came out merged into fewer lines). **Nothing was sent.** The extension tries real paragraphs, then line breaks, then building lines directly, and reads the editor back after each; this means none worked. | Check the message cell really contains line breaks (see *Writing multi-line messages*). If it does, send the maintainer the cell text and a screenshot of the compose window. |
 | `VALIDATION_FAILED` | The filled-in message did not match the job. Nothing was sent. | Retry; report if it repeats. |
 | `SEND_ERROR_SHOWN` | Outlook showed an error after Send. | **Check Sent Items** (needs review). |
 | `NO_CONFIRMATION` | Send clicked, no confirmation in time. | **Check Sent Items** (needs review). |
@@ -400,6 +401,7 @@ How it behaves:
 | `Could not reach the backend` | The backend is not running, or the URL/port is wrong. |
 | Nothing happens after **Start** | Outlook tab missing or signed out; no row has H, I and G filled with J empty; or the next-fetch time has not arrived (the message says when). |
 | Row marked `failed` instantly (a fraction of a second) | A draft was already open, or **Duplicate delivery** from a previous failure (fixed: failed rows now retry; update to the latest code). |
+| The whole message arrives on ONE line | Either the cell holds one line only (check the formula bar: the lines may have been split into rows below), or Outlook merged them. The extension now reads the editor back and refuses to send a message whose lines came out merged (`BODY_FORMAT_FAILED`). |
 | The message arrives in pieces, or rows below it contain fragments | The text was pasted while the cell was only selected, so Google Sheets split it into rows. Delete the fragments, put the whole message back into ONE cell (double-click the cell first, then paste). |
 | Email composes but `RECIPIENT_FAILED` | Update the extension to the latest version (older versions mis-detected recipient chips) and reload it. |
 | `needs_review` although the email arrived | Outlook was slow to list it in Sent Items. Set J to `sent` by hand; consider unticking the Sent Items confirmation. |
