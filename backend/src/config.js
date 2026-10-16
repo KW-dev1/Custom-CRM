@@ -55,7 +55,16 @@ export function loadConfig(env = process.env) {
     if (!gid && !tab) errors.push('SHEET_GID (or a SHEET_URL containing gid=) or SHEET_TAB is required');
     if (gid && !/^\d+$/.test(gid)) errors.push('SHEET_GID must be numeric');
   }
-  const xlsxPath = type === 'xlsx' ? need('XLSX_PATH') : '';
+  let xlsxPath = '';
+  if (type === 'xlsx') {
+    xlsxPath = get('XLSX_PATH');
+    if (!xlsxPath) {
+      const hasGoogle = get('SHEET_URL') || get('SHEET_ID') || get('GOOGLE_SERVICE_ACCOUNT_FILE') || get('GOOGLE_CLIENT_ID');
+      errors.push(hasGoogle
+        ? 'XLSX_PATH is required because DATA_SOURCE is "xlsx" (the default). You have Google settings: did you mean DATA_SOURCE=google? Check backend/.env: no "#" before that line and no spaces around "=".'
+        : 'XLSX_PATH is required');
+    }
+  }
   if (xlsxPath && !/\.xlsx$/i.test(xlsxPath)) errors.push('XLSX_PATH must point to an .xlsx file');
 
   const columns = {
@@ -67,14 +76,23 @@ export function loadConfig(env = process.env) {
   const used = Object.values(columns).filter(Boolean);
   if (new Set(used).size !== used.length) errors.push('Column settings must all be different');
 
+  // Google login: a service account key file (recommended) or an OAuth client + refresh token.
+  function googleSettings() {
+    const file = get('GOOGLE_SERVICE_ACCOUNT_FILE');
+    if (file) return { serviceAccountFile: resolve(file) };
+    const g = { clientId: get('GOOGLE_CLIENT_ID'), clientSecret: get('GOOGLE_CLIENT_SECRET'), refreshToken: get('GOOGLE_REFRESH_TOKEN') };
+    if (!g.clientId || !g.clientSecret || !g.refreshToken) {
+      errors.push('Set GOOGLE_SERVICE_ACCOUNT_FILE (recommended), or GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET + GOOGLE_REFRESH_TOKEN');
+    }
+    return g;
+  }
+
   const cfg = {
     port: int('PORT', 3000, 1, 65535),
     host: get('HOST', '127.0.0.1'),
     apiKeys: keys,
     source: { type, path: xlsxPath ? resolve(xlsxPath) : null, sheetName: get('XLSX_SHEET') || null },
-    google: google
-      ? { clientId: need('GOOGLE_CLIENT_ID'), clientSecret: need('GOOGLE_CLIENT_SECRET'), refreshToken: need('GOOGLE_REFRESH_TOKEN') }
-      : null,
+    google: google ? googleSettings() : null,
     sheet: { id: sheetId || null, gid: gid || null, tab: tab || null, headerRows: int('HEADER_ROWS', 1, 0, 100) },
     columns,
     // Defence in depth: refuse job claims closer together than this, whatever the client does.

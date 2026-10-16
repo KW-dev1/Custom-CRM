@@ -171,3 +171,10 @@ test('sender column can be disabled', async () => {
   await store.writeStatus(2, 'pending', undefined, { sender: 'outlook-A' });
   assert.equal((await reopen(file)).getCell('L2').value, null);
 });
+
+test('readHeader returns the header text of each configured column', async () => {
+  const { file } = await makeBook();
+  const h = await createXlsxStore({ cfg: cfgFor(file) }).readHeader();
+  assert.deepEqual([h.emails, h.subject, h.body, h.status], ['Email', 'Subject', 'Message', 'Status']);
+  assert.deepEqual(await createXlsxStore({ cfg: cfgFor(file, { HEADER_ROWS: '0' }) }).readHeader(), {});
+});

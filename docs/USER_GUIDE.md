@@ -88,6 +88,7 @@ Folders you will use:
 | `docs/` | This guide. |
 
 Optional check that everything works on your machine: `npm test` (takes about a minute).
+At any time, `npm run check:source` is a **read-only** check of your data source (login, sheet/file, columns, row counts).
 
 ## 4. Prepare your spreadsheet
 
@@ -125,6 +126,22 @@ Alice Smith <alice@example.com>, bob@example.com
 - A trailing comma or space (`alice@example.com, `) is fine.
 - **A malformed address anywhere in the cell** (for example `bob@` or `a@@b.com`) makes the row `failed` with a
   reason in the note column. The system refuses to send to a partly understood recipient list.
+
+### Writing multi-line messages in column I
+
+The message is **plain text**; line breaks and blank lines are kept. Bold, colours, bullets, HTML, images and attachments are not supported.
+
+**Google Sheets**
+
+- **Pasting a message:** **double-click the cell** (or select it and press **Enter**) so the cursor is *inside* the cell, then paste.
+  If you paste while the cell is only *selected*, Google Sheets splits the text at every line break and spreads it over **many rows**.
+  That leaves your message in pieces and creates junk rows; if it happens, undo (Ctrl+Z) and paste again in edit mode.
+- **Typing a message:** press **Ctrl+Enter** (Windows) to start a new line inside the cell; two in a row make a blank line between paragraphs.
+- **Checking it:** click the cell and look at the formula bar (or turn on *Format > Wrapping > Wrap*). The whole message, line breaks included,
+  must be in that one cell. Never leave fragments of a message in the rows below it.
+- Writing the message in Notepad first and pasting it in edit mode is the most reliable way.
+
+**Excel:** press **Alt+Enter** for a new line inside a cell.
 
 ### What the backend does with each row
 
@@ -171,6 +188,7 @@ COL_NOTE=K
 | `API_KEYS` | *(required)* | The shared secret the extension sends. 16+ characters. Several keys separated by commas are allowed (handy for rotating). |
 | `PORT` / `HOST` | `3000` / `127.0.0.1` | Where it listens. `127.0.0.1` means "this computer only", which is the safe choice. |
 | `DATA_SOURCE` | `xlsx` | `xlsx` (local Excel file) or `google` (Google Sheets, see Part 15). |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | *(google only)* | Path to the service-account JSON key. Alternative: OAuth values (Part 15). |
 | `XLSX_PATH` | *(required for xlsx)* | Path to the `.xlsx` file. |
 | `XLSX_SHEET` | first sheet | Worksheet name, if your file has several. |
 | `HEADER_ROWS` | `1` | How many header rows to skip. |
@@ -356,7 +374,7 @@ How it behaves:
 | `VALIDATION_FAILED` | The filled-in message did not match the job. Nothing was sent. | Retry; report if it repeats. |
 | `SEND_ERROR_SHOWN` | Outlook showed an error after Send. | **Check Sent Items** (needs review). |
 | `NO_CONFIRMATION` | Send clicked, no confirmation in time. | **Check Sent Items** (needs review). |
-| `SENT_ITEMS_NOT_FOUND` | Compose closed but the message was not listed in Sent Items in 30 s. | **Check Sent Items.** If Outlook is just slow, untick *Confirm each send in Sent Items*. |
+| `SENT_ITEMS_NOT_FOUND` | Compose closed but the message was not matched in Sent Items in 30 s. The message ends with counts of what the check saw (rows listed, with the subject, with the recipient, within the time window). | **Check Sent Items.** If the email is there, the check is giving a false alarm: untick *Confirm each send in Sent Items* and send the counts to the maintainer. |
 | `SENT_ITEMS_UNAVAILABLE` | The Sent Items folder entry was not visible. | Widen the Outlook window so the folder list shows, or untick the confirmation. |
 | *Duplicate delivery ... already processed locally (sent / needs_review)* | The extension remembers sending this row. | If you really want to resend: **Clear job history**. |
 | *The backend refused the result for the last job* | Row claimed by another profile, edited, or removed. Automation paused; email **not** resent. | Check the sheet, then **Start**. |
@@ -377,9 +395,12 @@ How it behaves:
 | Popup says **Not configured** even though the form is filled | You did not click **Save settings**. Click it and allow the permission prompt. |
 | `Backend server error (HTTP 502)` | See the backend terminal. Usually `Excel file not found` (check the **exact** file name and that Windows is not hiding a second `.xlsx`), or the file is open in Excel. |
 | `Backend rejected the credentials (HTTP 401)` | The popup key differs from `API_KEYS`. Copy it exactly. |
+| Backend says `XLSX_PATH is required` although you use Google Sheets | `DATA_SOURCE=google` is missing from `backend/.env` (or has a `#` in front, or spaces around `=`). Edits to `.env` must be **added** to the file, not replace it. `npm run check:source` prints `Data source: ...` on its first line to confirm which source is active. |
+| `check:source` says **Google rejected the service account key** | The message now says why. Usually: **the Windows clock is off** (Settings > Time & language > Date & time > *Sync now*, and turn on *Set time automatically*); or the key file was **edited** or is from a **deleted key** (create a NEW JSON key in Google Cloud and use the downloaded file unchanged); or the service account was deleted/disabled. |
 | `Could not reach the backend` | The backend is not running, or the URL/port is wrong. |
 | Nothing happens after **Start** | Outlook tab missing or signed out; no row has H, I and G filled with J empty; or the next-fetch time has not arrived (the message says when). |
 | Row marked `failed` instantly (a fraction of a second) | A draft was already open, or **Duplicate delivery** from a previous failure (fixed: failed rows now retry; update to the latest code). |
+| The message arrives in pieces, or rows below it contain fragments | The text was pasted while the cell was only selected, so Google Sheets split it into rows. Delete the fragments, put the whole message back into ONE cell (double-click the cell first, then paste). |
 | Email composes but `RECIPIENT_FAILED` | Update the extension to the latest version (older versions mis-detected recipient chips) and reload it. |
 | `needs_review` although the email arrived | Outlook was slow to list it in Sent Items. Set J to `sent` by hand; consider unticking the Sent Items confirmation. |
 | The backend log says `file is open in Excel` | Close Excel (the lock file `~$yourfile.xlsx` must disappear). |
@@ -459,10 +480,48 @@ reverse proxy or tunnel in front of the backend, and keep the file on the backen
 
 ### Google Sheets instead of Excel
 
-Set `DATA_SOURCE=google`, `SHEET_URL=<your sheet's URL>`, and the three `GOOGLE_*` values. Create an OAuth client of type
-**Desktop app**, enable the Google Sheets API, **publish** the OAuth app (in "Testing" mode refresh tokens expire after 7 days),
-then run `npm run auth --workspace backend` once to obtain the refresh token. This path has only been tested against mocked
-HTTP, never against live Google. Details are in [`backend/README.md`](../backend/README.md).
+Recommended if you add rows every day: you can edit the sheet while the backend runs (no "close the file" rule), and the
+Status column fills in live. The data layout (columns G, H, I, J, row rules, statuses) is identical to Excel.
+
+**Step 1: a native Google Sheet.** Create the sheet in Google Sheets, or open your `.xlsx` there and choose
+**File > Save as Google Sheets**. (A tab that still shows an `.XLSX` badge cannot be edited by the backend.)
+
+**Step 2: a service account** (a free robot login inside your own Google account; a personal Gmail is enough):
+
+1. Go to `console.cloud.google.com` and create a **project**.
+2. **APIs & Services > Library**: search **Google Sheets API** and click **Enable**.
+3. **IAM & Admin > Service Accounts > Create service account**: any name, skip the optional steps, Done.
+4. Open the service account > **Keys > Add key > Create new key > JSON**. A file downloads. Move it to
+   `backend/secrets/service-account.json`. **Keep it secret** (the folder is git-ignored).
+5. Copy the service account's **email address** (`something@your-project.iam.gserviceaccount.com`).
+6. In your Google Sheet click **Share**, paste that email, choose **Editor**, and send.
+
+**Step 3: settings.** In `backend/.env`:
+
+```ini
+DATA_SOURCE=google
+SHEET_URL=https://docs.google.com/spreadsheets/d/<your sheet id>/edit?gid=<tab id>
+GOOGLE_SERVICE_ACCOUNT_FILE=./secrets/service-account.json
+COL_NOTE=K
+```
+
+Paste the sheet URL exactly as it appears in your browser; the `gid=` part selects the tab.
+
+**Step 4: check it (read-only, changes nothing):**
+
+```bash
+npm run check:source
+```
+
+You should see `[ok] Google login works`, `[ok] Found the sheet/file and the right tab`, the header names for columns G, H, I, J,
+and counts of your rows. Typical problems it names: key file not found, wrong kind of file downloaded, "does <email> have edit
+access" (share the sheet with that email), or a wrong sheet link.
+
+**Step 5: run.** `npm run start:backend`, then follow Parts 6 and 7 of this guide. Try one test row with your own addresses first.
+
+Notes: keep Excel-only rules out of your head (no locking here). Do not edit a row while it is `pending`: its content is how the
+backend recognises it. The 7-day token expiry applies only to the OAuth alternative (see `backend/README.md`), not to a service account.
+Details and the OAuth alternative are in [`backend/README.md`](../backend/README.md).
 
 ### API contract
 

@@ -10,7 +10,8 @@
     "icons": "node scripts/make-icons.mjs",
     "test:extension": "node --test \"extension/tests/*.test.js\"",
     "test:backend": "npm test --workspace backend",
-    "start:backend": "npm start --workspace backend"
+    "start:backend": "npm start --workspace backend",
+    "check:source": "npm run check:source --workspace backend"
   },
   "devDependencies": {
     "jsdom": "^26.1.0"

@@ -101,3 +101,100 @@ test('sheets: sender is written in the same batch as the status and read from it
   const row = await client.readRow(9);
   assert.equal(row.sender, 'outlook-A');
 });
+
+// ---------------- service account ----------------
+import { generateKeyPairSync, createVerify } from 'node:crypto';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createServiceAccountAuth, loadServiceAccountKey, SHEETS_SCOPE, TOKEN_URL } from '../src/google-auth.js';
+
+const rsa = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const privatePem = rsa.privateKey.export({ type: 'pkcs8', format: 'pem' });
+const SA = 'outlook-bot@my-project.iam.gserviceaccount.com';
+const decode = (p) => JSON.parse(Buffer.from(p, 'base64url').toString());
+
+test('service account: sends a correctly signed JWT to Google and returns the access token', async () => {
+  let seen;
+  const auth = createServiceAccountAuth({ clientEmail: SA, privateKey: privatePem, now: () => 1_700_000_000_000,
+    fetchImpl: async (url, init) => { seen = { url, body: new URLSearchParams(String(init.body)) }; return json(200, { access_token: 'SA-TOKEN', expires_in: 3600 }); } });
+  assert.equal(await auth.getAccessToken(), 'SA-TOKEN');
+  assert.equal(auth.identity, SA);
+  assert.equal(seen.url, TOKEN_URL);
+  assert.equal(seen.body.get('grant_type'), 'urn:ietf:params:oauth:grant-type:jwt-bearer');
+  const [h, c, sig] = seen.body.get('assertion').split('.');
+  assert.deepEqual(decode(h), { alg: 'RS256', typ: 'JWT' });
+  assert.deepEqual(decode(c), { iss: SA, scope: SHEETS_SCOPE, aud: TOKEN_URL, iat: 1_700_000_000, exp: 1_700_003_600 });
+  const ok = createVerify('RSA-SHA256').update(`${h}.${c}`).verify(rsa.publicKey, Buffer.from(sig, 'base64url'));
+  assert.equal(ok, true, 'the signature must verify with the matching public key');
+});
+test('service account: token is cached, refreshed after expiry, concurrent callers share one request', async () => {
+  let calls = 0; let t = 0;
+  const auth = createServiceAccountAuth({ clientEmail: SA, privateKey: privatePem, now: () => t,
+    fetchImpl: async () => { calls++; return json(200, { access_token: `t${calls}`, expires_in: 3600 }); } });
+  await Promise.all([auth.getAccessToken(), auth.getAccessToken(), auth.getAccessToken()]);
+  assert.equal(calls, 1);
+  assert.equal(await auth.getAccessToken(), 't1');
+  t = 3600 * 1000;
+  assert.equal(await auth.getAccessToken(), 't2');
+});
+test('service account: invalid_grant gives an actionable error without leaking the key', async () => {
+  const auth = createServiceAccountAuth({ clientEmail: SA, privateKey: privatePem, fetchImpl: async () => json(400, { error: 'invalid_grant', error_description: 'Invalid JWT Signature.' }) });
+  await assert.rejects(auth.getAccessToken(), (e) => e instanceof GoogleAuthError && e.revoked && /clock|deleted/.test(e.message) && !e.message.includes('PRIVATE KEY'));
+});
+test('service account: unusable private key and network failure are reported cleanly', async () => {
+  const bad = createServiceAccountAuth({ clientEmail: SA, privateKey: 'not a key', fetchImpl: async () => json(200, {}) });
+  await assert.rejects(bad.getAccessToken(), (e) => /private key/.test(e.message) && !e.message.includes('not a key'));
+  const down = createServiceAccountAuth({ clientEmail: SA, privateKey: privatePem, fetchImpl: async () => { throw new Error('x'); } });
+  await assert.rejects(down.getAccessToken(), /Could not reach Google/);
+});
+test('loadServiceAccountKey: valid key file', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'sa-'));
+  const f = join(dir, 'k.json');
+  await writeFile(f, JSON.stringify({ type: 'service_account', client_email: SA, private_key: privatePem, project_id: 'p' }));
+  assert.deepEqual(await loadServiceAccountKey(f), { clientEmail: SA, privateKey: privatePem });
+});
+test('loadServiceAccountKey: missing file, bad JSON, wrong kind of file, missing fields', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'sa-'));
+  await assert.rejects(loadServiceAccountKey(join(dir, 'nope.json')), /not found/);
+  const bad = join(dir, 'bad.json'); await writeFile(bad, '{oops');
+  await assert.rejects(loadServiceAccountKey(bad), /not valid JSON/);
+  const oauth = join(dir, 'oauth.json'); await writeFile(oauth, JSON.stringify({ installed: { client_id: 'x', client_secret: 'SECRET-VALUE' } }));
+  await assert.rejects(loadServiceAccountKey(oauth), (e) => /not a service account key/.test(e.message) && !e.message.includes('SECRET-VALUE'));
+  const partial = join(dir, 'partial.json'); await writeFile(partial, JSON.stringify({ type: 'service_account', client_email: SA }));
+  await assert.rejects(loadServiceAccountKey(partial), /not a service account key/);
+});
+test('sheets: a 403 tells you exactly which email to share the sheet with', async () => {
+  const auth = { getAccessToken: async () => 'T', invalidate() {}, identity: SA };
+  const client = createSheetsClient({ cfg: cfg(), auth, sleep: async () => {}, fetchImpl: async () => json(403, { error: { message: 'The caller does not have permission' } }) });
+  await assert.rejects(client.readRows(), (e) => e.message.includes(SA) && /Editor/.test(e.message));
+});
+
+test('sheets: readHeader reads the header row cells of the configured columns', async () => {
+  const { client, seen } = sheetsWith(async (r) => r.url.includes('fields=') ? json(200, meta) : json(200, { values: [['Email', 'Subject', 'Message', 'Status']] }));
+  const h = await client.readHeader();
+  assert.ok(seen.at(-1).url.includes('!G1:J1'));
+  assert.deepEqual([h.emails, h.subject, h.body, h.status], ['Email', 'Subject', 'Message', 'Status']);
+});
+
+// ---- invalid_grant explanations ----
+import { explainInvalidGrant } from '../src/google-auth.js';
+
+test('explainInvalidGrant: a measured clock skew is reported in minutes, ahead or behind', () => {
+  assert.match(explainInvalidGrant('anything', 600), /about 10 minute\(s\) ahead of Google/);
+  assert.match(explainInvalidGrant('', -300), /about 5 minute\(s\) behind Google/);
+  assert.match(explainInvalidGrant('', 600), /Sync the Windows clock/);
+});
+test('explainInvalidGrant: small skew falls through to what Google said', () => {
+  assert.match(explainInvalidGrant('Invalid JWT Signature.', 3), /does not match Google's records.*NEW JSON key/s);
+  assert.match(explainInvalidGrant('Invalid JWT: Token must be a short-lived token (60 minutes) and in a reasonable timeframe.', null), /clock is wrong/);
+  assert.match(explainInvalidGrant('Invalid grant: account not found', null), /not found or is disabled/);
+  assert.match(explainInvalidGrant('', null), /deleted or disabled.*clock/s);
+  assert.match(explainInvalidGrant('Invalid JWT Signature.', 3), /Google says: "Invalid JWT Signature\."/);
+});
+test('service account: the real error path uses the Date header to detect a bad clock', async () => {
+  const googleNow = Date.parse('2026-10-16T12:00:00Z');
+  const auth = createServiceAccountAuth({ clientEmail: SA, privateKey: privatePem, now: () => googleNow + 25 * 60 * 1000,
+    fetchImpl: async () => ({ ok: false, status: 400, headers: { get: (k) => (k === 'date' ? new Date(googleNow).toUTCString() : null) }, json: async () => ({ error: 'invalid_grant', error_description: 'Invalid JWT: Token must be a short-lived token' }) }) });
+  await assert.rejects(auth.getAccessToken(), (e) => e.revoked && /about 25 minute\(s\) ahead/.test(e.message));
+});

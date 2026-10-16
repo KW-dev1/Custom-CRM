@@ -1,4 +1,10 @@
-// OAuth2 refresh-token flow (acts as your Google user). Uses plain fetch; no Google SDK.
+// Google login for the Sheets API, two ways (plain fetch + node:crypto, no Google SDK):
+//  * service account (recommended): a robot account with a JSON key; you share the sheet with its email;
+//  * OAuth2 refresh token: acts as your own Google user.
+// Both expose { getAccessToken(), invalidate(), identity }.
+
+import { createSign } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 
 export class GoogleAuthError extends Error {
   constructor(message, { revoked = false, status = null } = {}) {
@@ -41,6 +47,99 @@ export function createGoogleAuth({ clientId, clientSecret, refreshToken, fetchIm
   }
 
   return {
+    identity: 'the Google account you authorised',
+    async getAccessToken() {
+      if (cached && now() < cached.expiresAt) return cached.token;
+      inflight = inflight || refresh().finally(() => { inflight = null; });
+      return inflight;
+    },
+    invalidate() { cached = null; },
+  };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Service account
+// ---------------------------------------------------------------------------------------------
+
+/** Read and validate the JSON key downloaded from Google Cloud. Error messages never include the key. */
+export async function loadServiceAccountKey(path) {
+  let text;
+  try { text = await readFile(path, 'utf8'); }
+  catch { throw new GoogleAuthError(`Service account key file not found or unreadable: ${path}`); }
+  let key;
+  try { key = JSON.parse(text); }
+  catch { throw new GoogleAuthError('The service account key file is not valid JSON. Download a fresh JSON key from Google Cloud (Service Accounts > Keys > Add key > JSON).'); }
+  if (!key || key.type !== 'service_account' || !key.client_email || !key.private_key) {
+    throw new GoogleAuthError('That file is not a service account key: it needs "type": "service_account", "client_email" and "private_key". (An OAuth client file, with "installed" or "web" in it, is the wrong download.)');
+  }
+  return { clientEmail: String(key.client_email), privateKey: String(key.private_key) };
+}
+
+const b64u = (v) => Buffer.from(v).toString('base64url');
+
+/**
+ * Turn Google's invalid_grant answer into something actionable. `skewSec` is how far this computer's
+ * clock is ahead (+) or behind (-) Google's, measured from the response's Date header (null if unknown).
+ */
+export function explainInvalidGrant(description, skewSec) {
+  const d = String(description || '').slice(0, 200);
+  const detail = d ? ` Google says: "${d}".` : '';
+  const clockFix = 'Sync the Windows clock (Settings > Time & language > Date & time > "Sync now"; turn on "Set time automatically") and try again.';
+  if (skewSec !== null && Math.abs(skewSec) > 120) {
+    return `This computer's clock is about ${Math.max(1, Math.round(Math.abs(skewSec) / 60))} minute(s) ${skewSec > 0 ? 'ahead of' : 'behind'} Google's, which makes Google reject the login. ${clockFix}${detail}`;
+  }
+  if (/short-lived|timeframe|\biat\b|\bexp\b/i.test(d)) return `Google thinks this computer's clock is wrong. ${clockFix}${detail}`;
+  if (/signature/i.test(d)) return `The key in the file does not match Google's records: the file was edited, is from a deleted key, or belongs to another service account. Create a NEW JSON key for the service account and use that file unchanged.${detail}`;
+  if (/not found|disabled|deleted/i.test(d)) return `The service account was not found or is disabled/deleted in Google Cloud. Check IAM & Admin > Service Accounts, then create a new JSON key.${detail}`;
+  return `Google rejected the service account key. It may have been deleted or disabled in Google Cloud, the file may have been edited, or this computer's clock is wrong. Create a new JSON key and check the system time.${detail}`;
+}
+
+export function createServiceAccountAuth({ clientEmail, privateKey, fetchImpl = globalThis.fetch, now = Date.now }) {
+  let cached = null;
+  let inflight = null;
+
+  function assertion() {
+    const iat = Math.floor(now() / 1000);
+    const head = b64u(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+    const claims = b64u(JSON.stringify({ iss: clientEmail, scope: SHEETS_SCOPE, aud: TOKEN_URL, iat, exp: iat + 3600 }));
+    try {
+      const sig = createSign('RSA-SHA256').update(`${head}.${claims}`).sign(privateKey);
+      return `${head}.${claims}.${b64u(sig)}`;
+    } catch {
+      throw new GoogleAuthError('The private key in the service account file could not be used to sign. Download a fresh JSON key.');
+    }
+  }
+
+  async function refresh() {
+    let res;
+    try {
+      res = await fetchImpl(TOKEN_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: assertion() }),
+      });
+    } catch (e) {
+      if (e instanceof GoogleAuthError) throw e;
+      throw new GoogleAuthError('Could not reach Google to get an access token.');
+    }
+    let data = null;
+    try { data = await res.json(); } catch { /* handled below */ }
+    if (!res.ok || !data || !data.access_token) {
+      const code = data && data.error;
+      if (code === 'invalid_grant') {
+        let skewSec = null;
+        const serverDate = res.headers && typeof res.headers.get === 'function' ? Date.parse(res.headers.get('date') || '') : NaN;
+        if (!Number.isNaN(serverDate)) skewSec = (now() - serverDate) / 1000;
+        throw new GoogleAuthError(explainInvalidGrant(data.error_description, skewSec), { revoked: true, status: res.status });
+      }
+      throw new GoogleAuthError(`Google token endpoint error${code ? `: ${code}` : ''} (HTTP ${res.status}).`, { status: res.status });
+    }
+    cached = { token: data.access_token, expiresAt: now() + Math.max(0, (Number(data.expires_in) || 3600) - 60) * 1000 };
+    return cached.token;
+  }
+
+  return {
+    identity: clientEmail,
     async getAccessToken() {
       if (cached && now() < cached.expiresAt) return cached.token;
       inflight = inflight || refresh().finally(() => { inflight = null; });

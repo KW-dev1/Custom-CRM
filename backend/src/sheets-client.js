@@ -46,7 +46,8 @@ export function createSheetsClient({ cfg, auth, fetchImpl = globalThis.fetch, sl
     if (!res.ok) {
       let detail = '';
       try { detail = (await res.json()).error?.message || ''; } catch { /* ignore */ }
-      const hint = res.status === 403 ? ' (does this Google user have edit access to the sheet?)' : res.status === 404 ? ' (check SHEET_ID / SHEET_GID)' : '';
+      const who = auth.identity || 'this Google user';
+      const hint = res.status === 403 ? ` (does ${who} have edit access to the sheet? Share the sheet with it as Editor.)` : res.status === 404 ? ' (check SHEET_ID / SHEET_GID)' : '';
       throw new SheetsError(`Sheets API HTTP ${res.status}${detail ? `: ${detail}` : ''}${hint}`, { status: res.status, retryable: res.status === 429 || res.status >= 500 });
     }
     return res.json();
@@ -68,6 +69,16 @@ export function createSheetsClient({ cfg, auth, fetchImpl = globalThis.fetch, sl
   };
 
   return {
+    /** Header text of each configured column (empty when HEADER_ROWS=0). Used by the connection check. */
+    async readHeader() {
+      if (cfg.sheet.headerRows < 1) return {};
+      const tab = await getTab();
+      const n = cfg.sheet.headerRows;
+      const range = encodeURIComponent(`${quoteTab(tab)}!${first}${n}:${last}${n}`);
+      const data = await request(`/values/${range}?majorDimension=ROWS`);
+      const cells = (data.values && data.values[0]) || [];
+      return Object.fromEntries(Object.entries(columns).filter(([, col]) => col).map(([k, col]) => [k, String(cells[at(col)] ?? '')]));
+    },
     /** All data rows below the header, including blank ones (so row numbers stay correct). */
     async readRows() {
       const tab = await getTab();

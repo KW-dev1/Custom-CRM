@@ -320,10 +320,33 @@
     return null;
   }
 
+  /**
+   * When no row matches, say WHY (counts only, no personal data) so a real-world mismatch can be diagnosed:
+   * how many rows were listed, how many had the subject, of those how many had the recipient, how many fell in the time window.
+   */
+  function diagnoseSentRows(rows, { subject, to, sentAtMs, nowMs }) {
+    const subj = normText(subject);
+    const addr = String(to).toLowerCase();
+    const from = sentAtMs - (sentAtMs % 60000) - 60000;
+    const out = { rows: rows.length, subject: 0, recipient: 0, timeReadable: 0, inWindow: 0 };
+    for (const r of rows) {
+      const label = normText(r.label);
+      if (!label.includes(subj)) continue;
+      out.subject += 1;
+      if (label.includes('@') && !label.includes(addr)) continue;
+      out.recipient += 1;
+      const t = parseRowTime(r, nowMs);
+      if (t === null) continue;
+      out.timeReadable += 1;
+      if (t >= from && t <= nowMs + 60000) out.inWindow += 1;
+    }
+    return out;
+  }
+
   Object.assign(OEA, {
     MAIL_PREFIX, OEAError, SELECTORS, isVisible, lowestCommonAncestor, findNewMail, findSubject, findCc, findCcToggle, countCompose, findCompose,
     detectReadiness, waitFor, extractText, squash, setInputValue, setEditableText, appendEditableText, pressKey, findRecipientPill,
     findSendError, findRecipientError, findSentToast,
-    findFolder, findSelectedFolder, isFolderSelected, readMessageRows, parseRowTime, matchSentRow,
+    findFolder, findSelectedFolder, isFolderSelected, readMessageRows, parseRowTime, matchSentRow, diagnoseSentRows,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : window);

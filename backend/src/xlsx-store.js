@@ -69,6 +69,12 @@ export function createXlsxStore({ cfg, now = Date.now }) {
   }
 
   return {
+    /** Header text of each configured column (empty when HEADER_ROWS=0). Used by the connection check. */
+    async readHeader() {
+      if (headerRows < 1) return {};
+      const { ws } = await load();
+      return Object.fromEntries(Object.entries(columns).filter(([, col]) => col).map(([k, col]) => [k, cellText(ws.getCell(`${col}${headerRows}`).value)]));
+    },
     async readRows() {
       const { ws } = await load();
       const out = [];
