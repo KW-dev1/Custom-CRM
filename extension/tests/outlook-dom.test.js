@@ -199,3 +199,75 @@ test('diagnoseSentRows counts rows, subject, recipient, readable time and window
   ];
   assert.deepEqual({ ...OEA.diagnoseSentRows(rows, q) }, { rows: 5, subject: 4, recipient: 3, timeReadable: 2, inWindow: 1 });
 });
+
+// ---- body line breaks: regression tests for "the whole message comes out on ONE line" ----
+const TEXT = 'Hi Ann,\n\nQuick note about Acme.\nSecond line.\n\nThanks,\nKeith';
+/** A tiny stand-in for execCommand on a contenteditable; each command can behave or be silently ignored (returns true, does nothing). */
+function stubCommands(doc, editor, { paragraph = 'works', lineBreak = 'works' } = {}) {
+  const container = () => (editor.lastChild && editor.lastChild.tagName === 'DIV' ? editor.lastChild : editor);
+  doc.execCommand = (cmd, _ui, value) => {
+    if (cmd === 'delete') { while (editor.firstChild) editor.removeChild(editor.firstChild); return true; }
+    if (cmd === 'insertText') { container().appendChild(doc.createTextNode(value)); return true; }
+    if (cmd === 'insertParagraph') { if (paragraph === 'works') editor.appendChild(doc.createElement('div')); return true; }
+    if (cmd === 'insertLineBreak') { if (lineBreak === 'works') container().appendChild(doc.createElement('br')); return true; }
+    return false;
+  };
+}
+test('bodyMatchesLines: line structure must match; extra lines (a signature) are tolerated; glued lines are not', async () => {
+  const { o, c } = await bareCompose();
+  const set = (html) => { c.body.innerHTML = html; };
+  set('<div>Hi Ann,</div><div><br></div><div>Quick note about Acme.</div>');
+  assert.equal(o.OEA.bodyMatchesLines(c.body, 'Hi Ann,\n\nQuick note about Acme.'), true);
+  set('<div>Hi Ann,</div><div>Quick note about Acme.</div><div>--</div><div>My signature</div>');
+  assert.equal(o.OEA.bodyMatchesLines(c.body, 'Hi Ann,\nQuick note about Acme.'), true, 'trailing signature is fine');
+  set('Hi Ann,Quick note about Acme.');
+  assert.equal(o.OEA.bodyMatchesLines(c.body, 'Hi Ann,\nQuick note about Acme.'), false, 'lines glued into one');
+  set('<div>Hi Ann, Quick note about Acme.</div>');
+  assert.equal(o.OEA.bodyMatchesLines(c.body, 'Hi Ann,\nQuick note about Acme.'), false, 'two lines merged into one is not a match');
+});
+test('editor honours real paragraphs: first strategy is used', async () => {
+  const { o, c } = await bareCompose();
+  stubCommands(o.doc, c.body);
+  assert.equal(o.OEA.setEditableText(c.body, TEXT), 'execCommand');
+  assert.equal(o.OEA.bodyMatchesLines(c.body, TEXT), true);
+});
+test('editor SWALLOWS insertParagraph (reports success but lines get glued): falls back to line breaks', async () => {
+  const { o, c } = await bareCompose();
+  stubCommands(o.doc, c.body, { paragraph: 'ignored' });
+  assert.equal(o.OEA.setEditableText(c.body, TEXT), 'execCommand-linebreak');
+  assert.equal(o.OEA.bodyMatchesLines(c.body, TEXT), true);
+});
+test('editor ignores BOTH paragraph and line-break commands: falls back to building the lines in the DOM', async () => {
+  const { o, c } = await bareCompose();
+  stubCommands(o.doc, c.body, { paragraph: 'ignored', lineBreak: 'ignored' });
+  assert.equal(o.OEA.setEditableText(c.body, TEXT), 'dom');
+  assert.equal(o.OEA.bodyMatchesLines(c.body, TEXT), true);
+});
+test('an editor that destroys line structure makes setEditableText report failure (never a silent success)', async () => {
+  const { o, c } = await bareCompose();
+  c.body.appendChild = (node) => o.window.Node.prototype.appendChild.call(c.body, o.doc.createTextNode(node.textContent));
+  assert.equal(o.OEA.setEditableText(c.body, TEXT), 'failed');
+});
+test('single-line messages and HTML-looking text still work', async () => {
+  const { o, c } = await bareCompose();
+  assert.notEqual(o.OEA.setEditableText(c.body, 'Just one line <b>not bold</b>'), 'failed');
+  assert.equal(c.body.querySelector('b'), null);
+});
+
+// ---- reading the message list when the page hides it ----
+test('readMessageRows still reads rows inside an aria-hidden container (Outlook may hide panes while re-rendering)', async () => {
+  const o = await createOutlook();
+  o.doc.getElementById('msglist').remove();
+  o.doc.body.insertAdjacentHTML('beforeend', `<div aria-hidden="true"><div role="listbox" aria-label="Message list">
+    <div role="option" aria-label="a@x.com potential collaboration 10:52 PM hi"><span title="Thu 10/15/2026 10:52 PM">10:52 PM</span></div></div></div>`);
+  assert.equal(o.OEA.readMessageRows(o.doc).length, 1);
+  assert.equal(o.OEA.describeMessageList(o.doc).visibleOptions, 0, 'but it is reported as not visible');
+});
+test('describeMessageList reports lists, options, visibility and focus without any text', async () => {
+  const o = await createOutlook();
+  const d = { ...o.OEA.describeMessageList(o.doc) };
+  assert.equal(d.lists, 1);
+  assert.equal(typeof d.options, 'number');
+  assert.ok(['visible', 'hidden', 'prerender', 'unknown'].includes(d.pageVisibility));
+  assert.ok(Object.keys(d).every((k) => ['lists', 'options', 'visibleOptions', 'pageVisibility', 'windowFocused'].includes(k)));
+});

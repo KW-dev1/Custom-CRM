@@ -26,7 +26,7 @@ function setup({ rand = 0, job = goodJob(), sendResult, sendError, duringSend = 
     ready: { state: 'ready' },
   };
   const api = {
-    claimJob: async () => { calls.claim++; if (env.claimError) throw env.claimError; return job; },
+    claimJob: async () => { calls.claim++; if (env.claimError) throw env.claimError; return currentJob === 'fresh' ? goodJob({ id: `job_${++claimN}` }) : currentJob; },
     getJobState: async () => state,
     reportStatus: async (_s, r) => {
       if (env.reportFails > 0) { env.reportFails--; throw new ApiError('network', 'down'); }
@@ -41,9 +41,15 @@ function setup({ rand = 0, job = goodJob(), sendResult, sendError, duringSend = 
       calls.send.push(msg);
       if (duringSend) await area.set({ inflight: duringSend });
       if (sendError) throw sendError;
-      return sendResult;
+      return currentResult;
     },
   };
+  let currentResult = sendResult;
+  env.setResult = (r) => { currentResult = r; };
+  let currentJob = job;
+  env.setJob = (j) => { currentJob = j; };
+  let claimN = 0;
+  env.freshJobs = () => { env.setJob = null; claimN = 0; currentJob = 'fresh'; };
   env.orch = createOrchestrator({
     store, api, tabs, logger: quiet, now: () => clock, scheduleNext: (s) => calls.schedule.push(s), random: () => rand,
     options: { staleMs: 120000 },
@@ -95,12 +101,58 @@ test('happy path: verified send reports processing then sent, records locally', 
   assert.equal(await e.store.getRun(), null);
   assert.equal(await e.store.getPendingReport(), null);
 });
-test('uncertain outcome -> needs_review, automation paused, status is NOT sent', async () => {
+test('uncertain outcome -> needs_review (never "sent"), and the queue KEEPS GOING after one', async () => {
   const e = setup({ sendResult: { outcome: 'uncertain', sendClicked: true, message: 'no confirmation' } });
   await e.orch.tick();
   assert.deepEqual(statuses(e), ['processing', 'needs_review']);
   assert.equal((await e.store.getStatus()).code, 'needs_review');
-  assert.equal((await e.store.getRuntime()).running, false);
+  assert.equal((await e.store.getRuntime()).running, true, 'one unclear result does not stop automation');
+  assert.equal((await e.store.getRuntime()).consecutiveFailures, 1);
+  assert.doesNotMatch((await e.store.getStatus()).message, /paused/);
+});
+test('the next job is fetched after a needs_review, at the normal interval', async () => {
+  const e = setup({ sendResult: { outcome: 'uncertain', sendClicked: true, message: 'no confirmation' } });
+  e.freshJobs();
+  await e.orch.tick();
+  e.advance(11 * 60000);
+  await e.orch.tick();
+  assert.equal(e.calls.claim, 2);
+});
+test('automation pauses only after N problems IN A ROW (default 3), counting failed and needs_review together', async () => {
+  const seq = [{ outcome: 'uncertain', sendClicked: true, message: 'x' }, { outcome: 'failed', sendClicked: false, message: 'y' }, { outcome: 'uncertain', sendClicked: true, message: 'z' }];
+  const e = setup({ sendResult: seq[0] });
+  e.freshJobs();
+  for (let n = 0; n < 3; n++) {
+    e.setResult(seq[n]);
+    await e.orch.tick();
+    assert.equal((await e.store.getRuntime()).running, n < 2, `after problem #${n + 1}`);
+    e.advance(11 * 60000);
+  }
+  assert.match((await e.store.getStatus()).message, /paused after 3 problem\(s\) in a row/);
+});
+test('a sent email resets the problem count', async () => {
+  const e = setup({ sendResult: { outcome: 'uncertain', sendClicked: true, message: 'x' } });
+  e.freshJobs();
+  await e.orch.tick(); e.advance(11 * 60000);
+  await e.orch.tick(); e.advance(11 * 60000);
+  assert.equal((await e.store.getRuntime()).consecutiveFailures, 2);
+  e.setResult({ outcome: 'sent', evidence: 'ok' });
+  await e.orch.tick(); e.advance(11 * 60000);
+  assert.equal((await e.store.getRuntime()).consecutiveFailures, 0);
+  e.setResult({ outcome: 'uncertain', sendClicked: true, message: 'x' });
+  await e.orch.tick();
+  assert.equal((await e.store.getRuntime()).running, true, 'count restarted from 0');
+});
+test('the pause threshold is a setting: 1 pauses at the first problem, 5 tolerates four', async () => {
+  const strict = setup({ sendResult: { outcome: 'uncertain', sendClicked: true, message: 'x' } });
+  await strict.area.set({ settings: { apiBaseUrl: 'https://api.example.com', apiKey: 'k-12345', enabled: true, pauseAfterProblems: 1 } });
+  await strict.orch.tick();
+  assert.equal((await strict.store.getRuntime()).running, false);
+  const lenient = setup({ sendResult: { outcome: 'uncertain', sendClicked: true, message: 'x' } });
+  lenient.freshJobs();
+  await lenient.area.set({ settings: { apiBaseUrl: 'https://api.example.com', apiKey: 'k-12345', enabled: true, pauseAfterProblems: 5 } });
+  for (let n = 0; n < 4; n++) { await lenient.orch.tick(); lenient.advance(11 * 60000); }
+  assert.equal((await lenient.store.getRuntime()).running, true);
 });
 test('pre-send failure -> failed; pauses only after repeated failures', async () => {
   const e = setup({ sendResult: { outcome: 'failed', sendClicked: false, message: 'Recipient not accepted' } });
@@ -333,11 +385,11 @@ test('...and can be turned off', async () => {
   await e.orch.tick();
   assert.deepEqual(e.calls.send.find((m) => m.type === 'OEA_SEND_JOB').options, { verifySentItems: false });
 });
-test('uncertain Sent Items result from the page becomes needs_review and pauses', async () => {
+test('uncertain Sent Items result from the page becomes needs_review and does not pause by itself', async () => {
   const e = setup({ sendResult: { outcome: 'uncertain', sendClicked: true, code: 'SENT_ITEMS_NOT_FOUND', message: 'not found in Sent Items' } });
   await e.orch.tick();
   assert.equal(e.calls.reports.at(-1).status, 'needs_review');
-  assert.equal((await e.store.getRuntime()).running, false);
+  assert.equal((await e.store.getRuntime()).running, true);
 });
 
 test('a permanently refused report (409) does not block the extension forever, never resends, and pauses', async () => {

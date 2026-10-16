@@ -298,3 +298,32 @@ test('Sent Items miss with nothing listed says so', async () => {
   const { r } = await runVerified(o);
   assert.match(r.message, /rows listed=0; rows with the subject=0/);
 });
+
+test('multi-line body is entered with its line breaks intact and the email is sent', async () => {
+  const o = await createOutlook({ sendMode: 'never' });
+  const body = 'Hi Ann,\n\nQuick note.\nSecond line.\n\nThanks,\nKeith';
+  const { r } = await run(o, job({ body }));
+  assert.equal(r.code, 'NO_CONFIRMATION', 'got as far as clicking Send');
+  const editor = o.doc.querySelector('[role="textbox"][aria-label^="Message body"]');
+  assert.equal(o.OEA.bodyMatchesLines(editor, body), true);
+});
+test('an editor that merges the lines into one => BODY_FORMAT_FAILED and NOTHING is sent', async () => {
+  const o = await createOutlook({ bodyEditor: 'flatten' });
+  const { r } = await run(o, job({ body: 'Line one\nLine two\nLine three' }));
+  assert.equal(r.outcome, 'failed');
+  assert.equal(r.sendClicked, false);
+  assert.equal(r.code, 'BODY_FORMAT_FAILED');
+  assert.match(r.message, /line breaks/);
+  assert.equal(o.controls.sendClicks, 0);
+});
+test('a single-line body is fine even with such an editor', async () => {
+  const o = await createOutlook({ bodyEditor: 'flatten' });
+  const { r } = await run(o, job({ body: 'One single line' }));
+  assert.equal(r.outcome, 'sent');
+});
+
+test('Sent Items miss also reports the page state (list found, options, tab visibility, focus)', async () => {
+  const o = await createOutlook({ sentItems: 'missing' });
+  const { r } = await runVerified(o);
+  assert.match(r.message, /Page: message lists found=1; options in page=\d+; visible options=\d+; tab visibility=\w+; window focused=\w+\./);
+});

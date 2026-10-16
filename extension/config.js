@@ -42,6 +42,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   statusValues: { ...DEFAULT_STATUS_VALUES },
   fetchMinMinutes: 10, // the backend is asked for one job at a random time between min and max minutes
   fetchMaxMinutes: 20,
+  pauseAfterProblems: 3, // automation pauses only after this many failed / needs-review results IN A ROW (a sent email resets the count)
   verifySentItems: true, // after Send, confirm the message is listed in Sent Items (stricter, ~10 s per email)
   enabled: false,
 });
@@ -61,6 +62,7 @@ export function normalizeSettings(raw = {}) {
   s.fetchMaxMinutes = Number(s.fetchMaxMinutes);
   s.enabled = Boolean(s.enabled);
   s.verifySentItems = s.verifySentItems !== false;
+  s.pauseAfterProblems = Number(s.pauseAfterProblems);
   return s;
 }
 
@@ -102,6 +104,9 @@ export function validateSettings(input) {
   if (!okMin) errors.fetchMinMinutes = 'Minimum must be between 1 and 1440 minutes.';
   if (!okMax) errors.fetchMaxMinutes = 'Maximum must be between 1 and 1440 minutes.';
   if (okMin && okMax && s.fetchMinMinutes > s.fetchMaxMinutes) errors.fetchMaxMinutes = 'Maximum must be at least the minimum.';
+  if (!Number.isInteger(s.pauseAfterProblems) || s.pauseAfterProblems < 1 || s.pauseAfterProblems > 20) {
+    errors.pauseAfterProblems = 'Pause-after count must be a whole number from 1 to 20.';
+  }
   for (const k of Object.values(STATUS)) {
     const v = s.statusValues[k];
     if (typeof v !== 'string' || !v.trim()) errors.statusValues = `Status value for "${k}" must be a non-empty string.`;

@@ -44,6 +44,7 @@ let [sw] = ctx.serviceWorkers(); if (!sw) sw = await ctx.waitForEvent('servicewo
 const id = new URL(sw.url()).host;
 await ctx.route('https://outlook.live.com/mail/**', (r) => r.fulfill({ contentType: 'text/html', body: PAGE }));
 const outlook = await ctx.newPage();
+if (process.env.BODY_MODE) await outlook.addInitScript((m) => { window.__BODY_MODE = m; }, process.env.BODY_MODE);
 await outlook.goto('https://outlook.live.com/mail/0/');
 await outlook.waitForTimeout(500);
 await sw.evaluate(({ port, KEY }) => chrome.storage.local.set({
@@ -66,6 +67,7 @@ console.log('extension status:', rt.status.code, '|', rt.status.message);
 const gapMin = (rt.runtime.nextClaimAt - Date.now()) / 60000;
 console.log('next fetch in   :', gapMin.toFixed(1), 'min (expected 10-20)');
 const ok = sent.length === 1 && sent[0].to.join() === 'first@client.com' && sent[0].cc.join() === 'second@client.com,third@client.com,fourth@client.com'
+  && JSON.stringify(sent[0].body.split('\n').map((l) => l.trim()).filter(Boolean)) === JSON.stringify(['Hi team,', 'Following up on our call.', 'Thanks']) /* line structure survived */
   && sheet.rows[0].status === 'sent' && /Sent Items/.test(sheet.rows[0].note) && sheet.rows[1].status === '' && gapMin > 9.5 && gapMin <= 20.1;
 console.log(ok ? 'RESULT: PASS' : 'RESULT: FAIL');
 await ctx.close(); server.close();

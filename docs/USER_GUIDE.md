@@ -131,6 +131,18 @@ Alice Smith <alice@example.com>, bob@example.com
 
 The message is **plain text**; line breaks and blank lines are kept. Bold, colours, bullets, HTML, images and attachments are not supported.
 
+**Easiest way: write the whole message on ONE line and mark the breaks.** Type `\n` (a backslash followed by the letter n)
+wherever you want a line break, and `\n\n` for a blank line between paragraphs. `<br>` works the same way. Spaces around a marker are ignored.
+This avoids every cell-editing and pasting problem, and works in Google Sheets and Excel.
+
+| You type in the cell | The email shows |
+|---|---|
+| `Hi Ann,\n\nQuick note about Acme.\n\nThanks,\nKeith` | `Hi Ann,`<br>*(blank line)*<br>`Quick note about Acme.`<br>*(blank line)*<br>`Thanks,`<br>`Keith` |
+| `Hi Ann,<br><br>Quick note.<br>Keith` | `Hi Ann,`<br>*(blank line)*<br>`Quick note.`<br>`Keith` |
+
+Only that exact backslash-n (or `<br>`) is a marker; a lone `\` or `/` is left alone. The marker is **not** applied to the Subject, which stays one line.
+The other ways below (real line breaks inside the cell) also work.
+
 **Google Sheets**
 
 - **Pasting a message:** **double-click the cell** (or select it and press **Enter**) so the cursor is *inside* the cell, then paste.
@@ -265,7 +277,7 @@ The coloured badge at the top shows the state:
 | Processing email | A send is in progress. |
 | Email sent | The last email was **verified** as sent. (Never shown unless verified.) |
 | Failed | The last job failed **before sending**; the reason is shown. |
-| Needs review | Send was clicked but the result could not be confirmed. **Check Sent Items.** Automation paused. |
+| Needs review | Send was clicked but the result could not be confirmed. **Check Sent Items.** Automation keeps going unless this repeats (see *Automatic safety stops*). |
 | Paused | Stopped by you, disabled, or paused automatically after a problem. |
 
 ## 7. Your first test
@@ -292,7 +304,7 @@ If anything fails, jump to [Troubleshooting](#11-troubleshooting).
 - [ ] The backend is running (terminal open, `/health` works).
 - [ ] The Excel file is **closed**; H and I are filled for the rows you want sent; J is empty for them.
 - [ ] Chrome is running, with an Outlook tab open, **signed in**, **no draft open**, and the tab not minimized or sleeping.
-- [ ] The popup shows **Automation enabled** ticked; press **Start**.
+- [ ] The popup shows **Automation enabled** ticked; press **Start** (it turns grey while running; **Stop** turns red and becomes the active button).
 - [ ] `MIN_CLAIM_INTERVAL_SEC` is back to `300` (or higher) for real use.
 
 ### What to expect
@@ -311,14 +323,17 @@ If anything fails, jump to [Troubleshooting](#11-troubleshooting).
 
 ### Automatic safety stops
 
-Automation **pauses itself** (badge: Paused or Needs review) when:
+One unclear or failed email does **not** stop the queue: the extension carries on with the next row at the normal interval, until the
+Status column has nothing left to send (then it keeps checking every 10-20 minutes for rows you add later).
 
-- an email ends as **`needs_review`** (unconfirmed);
+Automation **pauses itself** (badge: Paused) only when:
+
+- **3 problems happen in a row**: a "problem" is a `failed` or `needs_review` result; **a sent email resets the count**.
+  Change the number in the popup: *Advanced > Pause automation after this many problems in a row* (1-20, default 3);
 - the backend rejects the API key;
-- **3 failures in a row** occur;
 - the backend permanently refuses a result.
 
-It never resends an email on its own after any of these.
+It **never resends** an email on its own, whatever happens. Rows marked `needs_review` need a look in Sent Items afterwards.
 
 ### Requeue and resend
 
@@ -371,10 +386,12 @@ How it behaves:
 | `COMPOSE_ALREADY_OPEN` | A draft is already open. | Close or discard it. |
 | `NEW_MAIL_MISSING` / `CC_FIELD_MISSING` | A button was not found. | Outlook's layout changed or the window is very narrow; see Troubleshooting. |
 | `RECIPIENT_FAILED` / `RECIPIENT_REJECTED` | Outlook did not turn the typed address into a recipient. | Check the address; send the console log if it repeats. |
+| `BODY_FORMAT_FAILED` | Outlook's editor did not keep the message's line breaks (they came out merged into fewer lines). **Nothing was sent.** The extension tries real paragraphs, then line breaks, then building lines directly, and reads the editor back after each; this means none worked. | Check the message cell really contains line breaks (see *Writing multi-line messages*). If it does, send the maintainer the cell text and a screenshot of the compose window. |
 | `VALIDATION_FAILED` | The filled-in message did not match the job. Nothing was sent. | Retry; report if it repeats. |
 | `SEND_ERROR_SHOWN` | Outlook showed an error after Send. | **Check Sent Items** (needs review). |
 | `NO_CONFIRMATION` | Send clicked, no confirmation in time. | **Check Sent Items** (needs review). |
 | `SENT_ITEMS_NOT_FOUND` | Compose closed but the message was not matched in Sent Items in 30 s. The message ends with counts of what the check saw (rows listed, with the subject, with the recipient, within the time window). | **Check Sent Items.** If the email is there, the check is giving a false alarm: untick *Confirm each send in Sent Items* and send the counts to the maintainer. |
+| `SENT_ITEMS_NOT_FOUND` with `rows listed=0` | The folder opened but the message list was empty/unreadable, which usually means the Outlook tab was **hidden or in the background** (Outlook draws its list only while visible). The message ends with the tab's visibility (`tab visibility=visible/hidden`, `window focused=...`). Keep Outlook in its own window, not minimized or covered, and add `outlook.live.com` to Chrome's *Always keep these sites active* (Settings > Performance). |
 | `SENT_ITEMS_UNAVAILABLE` | The Sent Items folder entry was not visible. | Widen the Outlook window so the folder list shows, or untick the confirmation. |
 | *Duplicate delivery ... already processed locally (sent / needs_review)* | The extension remembers sending this row. | If you really want to resend: **Clear job history**. |
 | *The backend refused the result for the last job* | Row claimed by another profile, edited, or removed. Automation paused; email **not** resent. | Check the sheet, then **Start**. |
@@ -400,6 +417,7 @@ How it behaves:
 | `Could not reach the backend` | The backend is not running, or the URL/port is wrong. |
 | Nothing happens after **Start** | Outlook tab missing or signed out; no row has H, I and G filled with J empty; or the next-fetch time has not arrived (the message says when). |
 | Row marked `failed` instantly (a fraction of a second) | A draft was already open, or **Duplicate delivery** from a previous failure (fixed: failed rows now retry; update to the latest code). |
+| The whole message arrives on ONE line | The cell holds one line with no break markers: type `\n` (backslash n) where you want breaks, or `<br>`. Otherwise the lines may have been split into rows below the cell, or Outlook merged them. The extension now reads the editor back and refuses to send a message whose lines came out merged (`BODY_FORMAT_FAILED`). |
 | The message arrives in pieces, or rows below it contain fragments | The text was pasted while the cell was only selected, so Google Sheets split it into rows. Delete the fragments, put the whole message back into ONE cell (double-click the cell first, then paste). |
 | Email composes but `RECIPIENT_FAILED` | Update the extension to the latest version (older versions mis-detected recipient chips) and reload it. |
 | `needs_review` although the email arrived | Outlook was slow to list it in Sent Items. Set J to `sent` by hand; consider unticking the Sent Items confirmation. |

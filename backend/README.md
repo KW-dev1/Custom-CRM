@@ -38,7 +38,7 @@ columns **H (Subject)** and **I (Message)** for each row you want sent, save and
 |---|---|
 | **G** | Email addresses: a JSON array `["a@x.com","b@y.org"]`, or a list separated by commas / semicolons / spaces / new lines. The **first valid address is To**, the rest are **Cc**. Duplicates are removed. |
 | **H** | Email subject (one line). |
-| **I** | Message content (line breaks are kept). |
+| **I** | Message content (line breaks are kept; on one line, write `\n` or `<br>` where you want a break, `\n\n` for a blank line). |
 | **J** | Status. Starts **empty** → `pending` when handed out → `sent`, `failed` or `needs_review`. |
 | K (optional) | `COL_NOTE`: timestamp + reason for every status change. |
 | **L** | `COL_SENDER`: the extension **profile** (Outlook account) that claimed the row, e.g. `outlook-A`. Written when the row is claimed; never changed afterwards. Set `COL_SENDER=` to disable. |

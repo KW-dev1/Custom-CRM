@@ -177,26 +177,53 @@
     }
     fireInput(el, null, 'insertText');
   }
-  /** Replace the content of a contenteditable with plain text, preserving line breaks. */
+  // ---- line-structure comparison: a message is only "entered" if its LINES came out right ----
+  const collapse = (t) => String(t).replace(/[\s\u00a0\u200b]+/g, ' ').trim();
+  const lineList = (text) => String(text).split(/\r\n|\r|\n/).map(collapse).filter(Boolean);
+  /**
+   * True when the editor shows our message's non-empty lines, in order, as separate lines (extra lines before or
+   * after, such as a signature, are tolerated). Unlike a whitespace-blind comparison this detects a message whose
+   * line breaks were swallowed and glued into one line.
+   */
+  function bodyMatchesLines(el, text) {
+    const want = lineList(text);
+    const got = lineList(extractText(el));
+    if (!want.length) return true;
+    for (let i = 0; i + want.length <= got.length; i++) {
+      if (want.every((l, k) => got[i + k] === l)) return true;
+    }
+    return false;
+  }
+  function typeViaCommands(el, lines, breakCommand) {
+    const doc = el.ownerDocument;
+    selectContents(el);
+    doc.execCommand('delete');
+    lines.forEach((line, i) => {
+      if (i > 0) doc.execCommand(breakCommand);
+      if (line) doc.execCommand('insertText', false, line);
+    });
+  }
+  /**
+   * Replace the content of a contenteditable with plain text, keeping its line breaks. Tries, in order: real
+   * paragraphs (execCommand insertParagraph), line breaks (insertLineBreak), then building the lines directly in
+   * the DOM. After each attempt the editor is READ BACK and only an attempt whose lines match is accepted.
+   * @returns {string} the method that worked, or 'failed' when none reproduced the message's lines
+   */
   function setEditableText(el, text) {
     const doc = el.ownerDocument;
     const lines = splitLines(text);
     el.focus();
-    let method = 'dom';
+    const attempts = [];
     if (typeof doc.execCommand === 'function') {
-      try {
-        selectContents(el);
-        let ok = doc.execCommand('delete');
-        lines.forEach((line, i) => {
-          if (i > 0) ok = doc.execCommand('insertParagraph') && ok;
-          if (line) ok = doc.execCommand('insertText', false, line) && ok;
-        });
-        method = 'execCommand';
-        if (!ok || squash(extractText(el)) !== squash(text)) method = 'dom';
-      } catch { method = 'dom'; }
+      attempts.push(['execCommand', () => typeViaCommands(el, lines, 'insertParagraph')]);
+      if (lines.length > 1) attempts.push(['execCommand-linebreak', () => typeViaCommands(el, lines, 'insertLineBreak')]);
     }
-    if (method === 'dom') fillByDom(el, lines);
-    return method;
+    attempts.push(['dom', () => fillByDom(el, lines)]);
+    for (const [name, run] of attempts) {
+      try { run(); } catch { continue; }
+      if (bodyMatchesLines(el, text)) return name;
+    }
+    return 'failed';
   }
   /**
    * Type text at the END of a contenteditable without touching its existing content. Recipient
@@ -269,11 +296,17 @@
   const findSelectedFolder = (doc) => Array.from(doc.querySelectorAll('[role="treeitem"][data-folder-name][aria-selected="true"]')).find(isVisible) || null;
   const isFolderSelected = (doc, name) => Array.from(doc.querySelectorAll('[role="treeitem"][data-folder-name][aria-selected="true"]')).some((el) => isVisible(el) && folderName(el) === name);
 
-  /** Rows of the message list: label = "<recipient> <subject> <time> <preview>", plus the time span (title holds the full date). */
+  /**
+   * Rows of the message list: label = "<recipient> <subject> <time> <preview>", plus the time span (title holds the full date).
+   * Deliberately NOT filtered by visibility: Outlook may mark panes aria-hidden while they re-render, and a row's content
+   * (subject, recipient, time) is all we use, so a row is trustworthy whether or not it is currently shown.
+   */
   function readMessageRows(doc) {
-    const list = first(doc, SELECTORS.messageList);
-    if (!list) return [];
-    return Array.from(list.querySelectorAll('[role="option"]')).filter(isVisible).map((row) => {
+    const rows = new Set();
+    for (const list of doc.querySelectorAll(SELECTORS.messageList.join(','))) {
+      list.querySelectorAll('[role="option"]').forEach((r) => rows.add(r));
+    }
+    return Array.from(rows).map((row) => {
       const timeSpan = Array.from(row.querySelectorAll('span')).find((sp) => /\d{1,2}:\d{2}/.test(sp.getAttribute('title') || '') || /^\d{1,2}:\d{2}(\s?[AP]M)?$/i.test((sp.textContent || '').trim()));
       return {
         label: (row.getAttribute('aria-label') || row.textContent || '').trim(),
@@ -281,6 +314,19 @@
         timeText: timeSpan ? (timeSpan.textContent || '').trim() : '',
       };
     });
+  }
+
+  /** What the page looks like to the check (no personal data): used to explain an empty message list. */
+  function describeMessageList(doc) {
+    const lists = Array.from(doc.querySelectorAll(SELECTORS.messageList.join(',')));
+    const options = lists.flatMap((l) => Array.from(l.querySelectorAll('[role="option"]')));
+    return {
+      lists: lists.length,
+      options: options.length,
+      visibleOptions: options.filter(isVisible).length,
+      pageVisibility: doc.visibilityState || 'unknown',
+      windowFocused: typeof doc.hasFocus === 'function' ? doc.hasFocus() : null,
+    };
   }
 
   /** Row timestamp in ms, or null. Prefers the full date in the span title; falls back to today's clock text. */
@@ -345,8 +391,8 @@
 
   Object.assign(OEA, {
     MAIL_PREFIX, OEAError, SELECTORS, isVisible, lowestCommonAncestor, findNewMail, findSubject, findCc, findCcToggle, countCompose, findCompose,
-    detectReadiness, waitFor, extractText, squash, setInputValue, setEditableText, appendEditableText, pressKey, findRecipientPill,
+    detectReadiness, waitFor, extractText, squash, setInputValue, setEditableText, bodyMatchesLines, appendEditableText, pressKey, findRecipientPill,
     findSendError, findRecipientError, findSentToast,
-    findFolder, findSelectedFolder, isFolderSelected, readMessageRows, parseRowTime, matchSentRow, diagnoseSentRows,
+    findFolder, findSelectedFolder, isFolderSelected, readMessageRows, describeMessageList, parseRowTime, matchSentRow, diagnoseSentRows,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : window);

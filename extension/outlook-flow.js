@@ -67,6 +67,7 @@
     }
     if ((compose.subject.value || '') !== job.subject) problems.push('Subject does not match.');
     if (!OEA.squash(OEA.extractText(compose.body)).includes(OEA.squash(job.body))) problems.push('Body does not match.');
+    else if (!OEA.bodyMatchesLines(compose.body, job.body)) problems.push('Body line breaks do not match.');
     if (compose.send.disabled || compose.send.getAttribute('aria-disabled') === 'true') problems.push('The Send button is disabled.');
     return problems;
   }
@@ -90,7 +91,8 @@
       if (e instanceof OEAError && e.code === 'TIMEOUT') {
         const d = OEA.diagnoseSentRows(OEA.readMessageRows(doc), query());
         const err = new OEAError('SENT_ITEMS_NOT_FOUND', 'The message did not appear in Sent Items.');
-        err.details = `Sent Items check saw: folder opened=${opened ? 'yes' : 'no'}; rows listed=${d.rows}; rows with the subject=${d.subject}; of those with the recipient=${d.recipient}; time readable=${d.timeReadable}; within the time window=${d.inWindow}.`;
+        const l = OEA.describeMessageList(doc);
+        err.details = `Sent Items check saw: folder opened=${opened ? 'yes' : 'no'}; rows listed=${d.rows}; rows with the subject=${d.subject}; of those with the recipient=${d.recipient}; time readable=${d.timeReadable}; within the time window=${d.inWindow}. Page: message lists found=${l.lists}; options in page=${l.options}; visible options=${l.visibleOptions}; tab visibility=${l.pageVisibility}; window focused=${l.windowFocused}.`;
         throw err;
       }
       throw e;
@@ -155,6 +157,9 @@
       OEA.setEditableText(compose.body, job.body);
       if (!OEA.squash(OEA.extractText(compose.body)).includes(OEA.squash(job.body))) {
         throw new OEAError('BODY_FAILED', 'Could not populate the message body.');
+      }
+      if (!OEA.bodyMatchesLines(compose.body, job.body)) {
+        throw new OEAError('BODY_FORMAT_FAILED', 'Outlook\'s editor did not keep the message\'s line breaks (they came out merged into fewer lines). Nothing was sent.');
       }
 
       await ctx.markStage(job.id, 'validating');

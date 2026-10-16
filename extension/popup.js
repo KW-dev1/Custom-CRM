@@ -4,7 +4,7 @@ import { createStore, KEYS } from './store.js';
 
 const store = createStore(chrome.storage.local);
 const $ = (id) => document.getElementById(id);
-const FIELDS = ['apiBaseUrl', 'apiKey', 'profileName', 'authHeader', 'authScheme', 'claimMethod', 'claimPath', 'statusMethod', 'statusPath', 'jobStatePath', 'fetchMinMinutes', 'fetchMaxMinutes'];
+const FIELDS = ['apiBaseUrl', 'apiKey', 'profileName', 'authHeader', 'authScheme', 'claimMethod', 'claimPath', 'statusMethod', 'statusPath', 'jobStatePath', 'fetchMinMinutes', 'fetchMaxMinutes', 'pauseAfterProblems'];
 
 const LABELS = {
   not_configured: 'Not configured', waiting_outlook: 'Waiting for Outlook', ready: 'Ready',
@@ -13,6 +13,14 @@ const LABELS = {
 
 function fmt(ts) {
   return ts ? new Date(ts).toLocaleString() : '';
+}
+
+/** Exactly one of Start / Stop is active: Start when stopped, Stop while running; both off while automation is disabled. */
+function setButtons(enabled, running) {
+  $('start').disabled = !enabled || running;
+  $('stop').disabled = !running;
+  $('start').title = !enabled ? 'Tick "Automation enabled" first' : running ? 'Already running' : 'Start processing jobs now';
+  $('stop').title = running ? 'Pause automation' : 'Not running';
 }
 
 async function renderStatus() {
@@ -26,8 +34,7 @@ async function renderStatus() {
   badge.dataset.status = code;
   $('statusMsg').textContent = msg;
   $('enabled').checked = settings.enabled;
-  $('start').disabled = !settings.enabled || runtime.running;
-  $('stop').disabled = !runtime.running;
+  setButtons(settings.enabled, runtime.running);
 }
 
 async function renderResult() {
@@ -111,8 +118,8 @@ $('clearHistory').addEventListener('click', async () => {
     msg.textContent = r && r.ok ? 'Job history cleared.' : `Not cleared: ${(r && r.reason) || 'unknown error'}`;
   } catch (e) { msg.textContent = `Not cleared: ${e.message}`; }
 });
-$('start').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'OEA_START' }).catch(() => {}));
-$('stop').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'OEA_STOP' }).catch(() => {}));
+$('start').addEventListener('click', () => { setButtons(true, true); chrome.runtime.sendMessage({ type: 'OEA_START' }).catch(() => {}); }); // update at once; storage events confirm
+$('stop').addEventListener('click', () => { setButtons(true, false); chrome.runtime.sendMessage({ type: 'OEA_STOP' }).catch(() => {}); });
 
 chrome.storage.onChanged.addListener(() => { renderStatus(); renderResult(); renderErrors(); });
 
