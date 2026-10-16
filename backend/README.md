@@ -61,28 +61,45 @@ configurable.
 
 ## Setup for Google Sheets (optional, `DATA_SOURCE=google`)
 
-1. **Google Cloud**: create a project, enable the **Google Sheets API**, configure the OAuth consent
-   screen, then create an **OAuth client ID of type "Desktop app"**.
-2. **Publish the OAuth app** ("In production" on the consent screen; it can stay unverified for personal
-   use). **While it is in "Testing" mode Google expires refresh tokens after 7 days** and the backend
-   will stop working with an `invalid_grant` error.
-3. The Google user you authorise must have **edit access** to the sheet.
-4. Configure:
-   ```bash
-   cp backend/.env.example backend/.env      # then edit it (never commit .env)
-   ```
-   Fill `API_KEYS` (a long random string; the extension's API key), `GOOGLE_CLIENT_ID`,
-   `GOOGLE_CLIENT_SECRET`. The sheet URL is already set to your sample sheet.
-5. Get the refresh token once (needs a browser, run on your own machine):
-   ```bash
-   npm install
-   npm run auth --workspace backend      # open the printed URL, approve, copy GOOGLE_REFRESH_TOKEN into .env
-   ```
-6. Run:
-   ```bash
-   npm run start:backend
-   curl http://127.0.0.1:3000/health
-   ```
+Best when you add rows daily: edit the sheet any time while the backend runs (no file locking), and statuses appear live.
+
+**1. Make a native Google Sheet.** If you start from an `.xlsx`, open it in Google Sheets and choose **File > Save as Google Sheets**
+(the tab must not show an `.XLSX` badge, because the Sheets API cannot edit Office-mode files).
+
+**2. Create a service account** (free, inside your own Google account; no company account needed):
+
+1. `console.cloud.google.com` > create a **project**.
+2. **APIs & Services > Library** > **Google Sheets API** > **Enable**.
+3. **IAM & Admin > Service Accounts > Create service account**; any name; skip the optional steps.
+4. Open it > **Keys > Add key > Create new key > JSON**. Save the file as `backend/secrets/service-account.json`
+   (that folder is git-ignored; treat the file like a password).
+5. Copy the service account's **email address** (looks like `name@project.iam.gserviceaccount.com`).
+6. In your Google Sheet click **Share**, paste that email, give it **Editor**.
+
+**3. Configure `backend/.env`:**
+
+```ini
+DATA_SOURCE=google
+SHEET_URL=<the sheet's browser URL, including gid=...>
+GOOGLE_SERVICE_ACCOUNT_FILE=./secrets/service-account.json
+COL_NOTE=K
+```
+
+**4. Check the connection (read-only, changes nothing):**
+
+```bash
+npm run check:source
+```
+
+It confirms the login, shows which header sits in each configured column and counts the rows. If a step is wrong it says which
+(for example: key file missing, wrong kind of file, or which email to share the sheet with).
+
+**5. Start** with `npm run start:backend`; the startup log prints `shareSheetWith` (the service account's email).
+Then do the first-run checklist below with one test row.
+
+*Alternative login as your own Google user (OAuth):* create an OAuth client of type **Desktop app**, **publish** the app (in "Testing" mode
+tokens expire after 7 days), set `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`, run `npm run auth --workspace backend` once, and put the printed
+`GOOGLE_REFRESH_TOKEN` in `.env` (use this instead of `GOOGLE_SERVICE_ACCOUNT_FILE`).
 
 ### Connecting the extension
 

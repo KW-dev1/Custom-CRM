@@ -88,6 +88,7 @@ Folders you will use:
 | `docs/` | This guide. |
 
 Optional check that everything works on your machine: `npm test` (takes about a minute).
+At any time, `npm run check:source` is a **read-only** check of your data source (login, sheet/file, columns, row counts).
 
 ## 4. Prepare your spreadsheet
 
@@ -171,6 +172,7 @@ COL_NOTE=K
 | `API_KEYS` | *(required)* | The shared secret the extension sends. 16+ characters. Several keys separated by commas are allowed (handy for rotating). |
 | `PORT` / `HOST` | `3000` / `127.0.0.1` | Where it listens. `127.0.0.1` means "this computer only", which is the safe choice. |
 | `DATA_SOURCE` | `xlsx` | `xlsx` (local Excel file) or `google` (Google Sheets, see Part 15). |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | *(google only)* | Path to the service-account JSON key. Alternative: OAuth values (Part 15). |
 | `XLSX_PATH` | *(required for xlsx)* | Path to the `.xlsx` file. |
 | `XLSX_SHEET` | first sheet | Worksheet name, if your file has several. |
 | `HEADER_ROWS` | `1` | How many header rows to skip. |
@@ -459,10 +461,48 @@ reverse proxy or tunnel in front of the backend, and keep the file on the backen
 
 ### Google Sheets instead of Excel
 
-Set `DATA_SOURCE=google`, `SHEET_URL=<your sheet's URL>`, and the three `GOOGLE_*` values. Create an OAuth client of type
-**Desktop app**, enable the Google Sheets API, **publish** the OAuth app (in "Testing" mode refresh tokens expire after 7 days),
-then run `npm run auth --workspace backend` once to obtain the refresh token. This path has only been tested against mocked
-HTTP, never against live Google. Details are in [`backend/README.md`](../backend/README.md).
+Recommended if you add rows every day: you can edit the sheet while the backend runs (no "close the file" rule), and the
+Status column fills in live. The data layout (columns G, H, I, J, row rules, statuses) is identical to Excel.
+
+**Step 1: a native Google Sheet.** Create the sheet in Google Sheets, or open your `.xlsx` there and choose
+**File > Save as Google Sheets**. (A tab that still shows an `.XLSX` badge cannot be edited by the backend.)
+
+**Step 2: a service account** (a free robot login inside your own Google account; a personal Gmail is enough):
+
+1. Go to `console.cloud.google.com` and create a **project**.
+2. **APIs & Services > Library**: search **Google Sheets API** and click **Enable**.
+3. **IAM & Admin > Service Accounts > Create service account**: any name, skip the optional steps, Done.
+4. Open the service account > **Keys > Add key > Create new key > JSON**. A file downloads. Move it to
+   `backend/secrets/service-account.json`. **Keep it secret** (the folder is git-ignored).
+5. Copy the service account's **email address** (`something@your-project.iam.gserviceaccount.com`).
+6. In your Google Sheet click **Share**, paste that email, choose **Editor**, and send.
+
+**Step 3: settings.** In `backend/.env`:
+
+```ini
+DATA_SOURCE=google
+SHEET_URL=https://docs.google.com/spreadsheets/d/<your sheet id>/edit?gid=<tab id>
+GOOGLE_SERVICE_ACCOUNT_FILE=./secrets/service-account.json
+COL_NOTE=K
+```
+
+Paste the sheet URL exactly as it appears in your browser; the `gid=` part selects the tab.
+
+**Step 4: check it (read-only, changes nothing):**
+
+```bash
+npm run check:source
+```
+
+You should see `[ok] Google login works`, `[ok] Found the sheet/file and the right tab`, the header names for columns G, H, I, J,
+and counts of your rows. Typical problems it names: key file not found, wrong kind of file downloaded, "does <email> have edit
+access" (share the sheet with that email), or a wrong sheet link.
+
+**Step 5: run.** `npm run start:backend`, then follow Parts 6 and 7 of this guide. Try one test row with your own addresses first.
+
+Notes: keep Excel-only rules out of your head (no locking here). Do not edit a row while it is `pending`: its content is how the
+backend recognises it. The 7-day token expiry applies only to the OAuth alternative (see `backend/README.md`), not to a service account.
+Details and the OAuth alternative are in [`backend/README.md`](../backend/README.md).
 
 ### API contract
 

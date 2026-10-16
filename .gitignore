@@ -10,3 +10,9 @@ node_modules/
 *.bak
 ~$*
 backend/data/
+
+# Google credentials must never be committed
+backend/secrets/
+service-account*.json
+client_secret*.json
+*-credentials.json
