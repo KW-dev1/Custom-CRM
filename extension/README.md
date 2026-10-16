@@ -31,6 +31,7 @@ In the popup, under **Settings**:
 
 | Field | Meaning |
 |---|---|
+| Profile name | Optional label for this Chrome profile / Outlook account (`outlook-A`). Sent as `X-Client-Id`; the backend records it in the sheet. Use a different one in every profile. No email addresses. |
 | Backend API base URL | `https://…` (plain `http://` is accepted only for `localhost`/`127.0.0.1`). |
 | API key / token | Stored in `chrome.storage.local`. Never logged, never sent anywhere except the backend. |
 | Confirm each send in Sent Items | On by default. Stricter and adds ~10 s per email; see *How success is verified*. |
@@ -87,6 +88,13 @@ per job id (it is retried with backoff on network/5xx/429). `failed` is only eve
 the extension skips a claimed job whose backend state is already `sent`/`needs_review`.
 
 Auth: header from settings, default `Authorization: Bearer <key>`. HTTP 401/403 → automation pauses.
+
+## Several Outlook accounts
+
+One Chrome profile per Outlook account, the extension installed in each, the same backend URL and API key, and a
+different **Profile name** in each popup. The backend hands each profile a different row, records the profile in
+column L, and paces each profile separately. See the backend README ("Several Outlook accounts").
+Each profile needs Chrome running, an Outlook tab open, and that account signed in.
 
 ## How duplicate sends are prevented
 
@@ -182,6 +190,7 @@ Use a **test** Outlook account and a test backend queue with addresses you contr
 | *Could not find the Sent Items folder* | The folder pane is collapsed or Outlook's labels changed; widen the window, or untick the Sent Items confirmation. |
 | *Could not find the Cc control* | Outlook's Cc toggle changed; adjust `SELECTORS.cc` / `LABELS.ccToggle` in `outlook-dom.js`. |
 | *Recipient did not resolve* | Outlook may resolve chips differently; adjust `enterRecipient`/`findRecipientPill`. |
+| *The backend refused the result for the last job* | The row was claimed by a different profile name, was edited, or removed. Automation paused and the email is **not** resent. Check the sheet, then press **Start**. |
 | *Needs review* | Check **Sent Items**, then decide manually; press **Start** to resume. |
 | *Duplicate delivery: already processed locally (sent / needs_review)* | You cleared a row's status to send it again, but the extension remembers sending it. If you really want to resend (after checking Sent Items), click **Clear job history** in the popup, then **Stop** and **Start**. |
 | Cleared a `failed` row but nothing happens | Make sure no draft is open in Outlook, then **Stop** and **Start** (Start fetches immediately). |

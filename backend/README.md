@@ -41,6 +41,7 @@ columns **H (Subject)** and **I (Message)** for each row you want sent, save and
 | **I** | Message content (line breaks are kept). |
 | **J** | Status. Starts **empty** → `pending` when handed out → `sent`, `failed` or `needs_review`. |
 | K (optional) | `COL_NOTE`: timestamp + reason for every status change. |
+| **L** | `COL_SENDER`: the extension **profile** (Outlook account) that claimed the row, e.g. `outlook-A`. Written when the row is claimed; never changed afterwards. Set `COL_SENDER=` to disable. |
 
 Row 1 is treated as a header (`HEADER_ROWS`). Column letters, status words and the header count are
 configurable.
@@ -98,8 +99,8 @@ All `/api` calls need `Authorization: Bearer <key>` (or `X-Api-Key`).
 
 | Call | Result |
 |---|---|
-| `POST /api/email-jobs/claim` | `200 {"job": {id, to, cc[], subject, body, metadata:{row}}}` or `204` when nothing is waiting. Marks the row `pending`. `429` + `Retry-After` if called more often than `MIN_CLAIM_INTERVAL_SEC`. |
-| `POST /api/email-jobs/:id/status` | Body `{"status": "processing\|sent\|failed\|needs_review", "message"?}` → `200 {id,status,applied}`. Idempotent. `409` if the row already has a different final status, `404` if the row was deleted/edited. |
+| `POST /api/email-jobs/claim` (header `X-Client-Id: outlook-A`, optional) | `200 {"job": {id, to, cc[], subject, body, metadata:{row}}}` or `204` when nothing is waiting. Marks the row `pending`. `429` + `Retry-After` if the same profile calls more often than `MIN_CLAIM_INTERVAL_SEC`. |
+| `POST /api/email-jobs/:id/status` | Body `{"status": "processing\|sent\|failed\|needs_review", "message"?}` → `200 {id,status,applied}`. Idempotent. `409` if the row already has a different final status or was claimed by another profile (`WRONG_CLIENT`), `404` if the row was deleted/edited. |
 | `GET /api/email-jobs/:id` | `200 {id,status}`: `empty|pending|sent|failed|needs_review|other`. |
 | `GET /health` | `200 {ok:true}`, no auth, no Google call. |
 
@@ -113,6 +114,25 @@ sorted, the row is found again by its content.
 
 See `backend/.env.example`. Notable: `MIN_CLAIM_INTERVAL_SEC` (default 300, a server-side floor on how
 often jobs are released), `MAX_CC` (default 20), `COL_*`, `STATUS_*`, `HEADER_ROWS`.
+
+## Several Outlook accounts (one Chrome profile each)
+
+Install the extension in every Chrome profile and give each one a **Profile name** in its popup (`outlook-A`,
+`outlook-B`, ...). All profiles point at the same backend URL and use the same API key.
+
+- **No double sends:** a row is marked `pending` (under a lock) *before* it is handed out, so two profiles asking
+  at the same moment always get different rows. Verified with three real browser profiles pressing Start together.
+- **First come, first served:** whichever profile asks next gets the next empty row.
+- **Recorded in the sheet:** column L shows which profile claimed each row.
+- **Per-profile pacing:** `MIN_CLAIM_INTERVAL_SEC` applies to each profile separately, so accounts don't throttle each other.
+- **Only the claimer reports:** a result is accepted only from the profile that claimed the row (`409 WRONG_CLIENT`
+  otherwise). Don't rename a profile while it has a job in flight.
+- Profile names are 1-40 letters, digits, spaces, dots, dashes or underscores. **Use labels, not email addresses.**
+- The header is `X-Client-Id`. Requests without it count as the profile `default`.
+- **Stuck rows:** if a profile's Chrome closes mid-job, its row stays `pending` (never auto-retried). Filter column J for
+  `pending` and read column L / the note timestamp to see who and when. After checking that account's Sent Items,
+  clear J (and L) to requeue the row.
+- Each Chrome profile must stay running with Outlook open and signed in to *its* account.
 
 ## Safety and limitations
 
