@@ -35,6 +35,18 @@ export function parseEmailList(cell) {
   return { emails, invalid };
 }
 
+/**
+ * Line-break markers for a message typed on ONE line in a cell: a literal \n (a backslash followed by n)
+ * or <br> / <br/> becomes a real line break; spaces around a break are trimmed. A message that already
+ * contains real line breaks is unchanged. (Write \n\n for a blank line between paragraphs.)
+ */
+export function applyBreakMarkers(text) {
+  return String(text)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/\\n/g, '\n')
+    .replace(/[ \t]*\n[ \t]*/g, '\n');
+}
+
 export const hasContent = (r) => [r.emails, r.subject, r.body].some((v) => String(v ?? '').trim() !== '');
 
 /** Stable fingerprint of the row's payload; lets us detect edits/moves before writing a status. */
@@ -67,7 +79,7 @@ export function rowToJob(r, { maxCc = 20 } = {}) {
   if (!subject) return { ok: false, error: 'Subject is empty.', incomplete: true };
   if (subject.length > MAX_SUBJECT) return { ok: false, error: 'Subject is too long.' };
 
-  const body = String(r.body ?? '').replace(/\r\n?/g, '\n').replace(/\s+$/, '');
+  const body = applyBreakMarkers(String(r.body ?? '').replace(/\r\n?/g, '\n')).replace(/\s+$/, '');
   if (!body.trim()) return { ok: false, error: 'Message content is empty.', incomplete: true };
   if (body.length > MAX_BODY) return { ok: false, error: 'Message content is too long.' };
 
