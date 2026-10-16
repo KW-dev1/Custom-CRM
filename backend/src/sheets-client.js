@@ -69,6 +69,16 @@ export function createSheetsClient({ cfg, auth, fetchImpl = globalThis.fetch, sl
   };
 
   return {
+    /** Header text of each configured column (empty when HEADER_ROWS=0). Used by the connection check. */
+    async readHeader() {
+      if (cfg.sheet.headerRows < 1) return {};
+      const tab = await getTab();
+      const n = cfg.sheet.headerRows;
+      const range = encodeURIComponent(`${quoteTab(tab)}!${first}${n}:${last}${n}`);
+      const data = await request(`/values/${range}?majorDimension=ROWS`);
+      const cells = (data.values && data.values[0]) || [];
+      return Object.fromEntries(Object.entries(columns).filter(([, col]) => col).map(([k, col]) => [k, String(cells[at(col)] ?? '')]));
+    },
     /** All data rows below the header, including blank ones (so row numbers stay correct). */
     async readRows() {
       const tab = await getTab();

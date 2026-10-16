@@ -169,3 +169,10 @@ test('sheets: a 403 tells you exactly which email to share the sheet with', asyn
   const client = createSheetsClient({ cfg: cfg(), auth, sleep: async () => {}, fetchImpl: async () => json(403, { error: { message: 'The caller does not have permission' } }) });
   await assert.rejects(client.readRows(), (e) => e.message.includes(SA) && /Editor/.test(e.message));
 });
+
+test('sheets: readHeader reads the header row cells of the configured columns', async () => {
+  const { client, seen } = sheetsWith(async (r) => r.url.includes('fields=') ? json(200, meta) : json(200, { values: [['Email', 'Subject', 'Message', 'Status']] }));
+  const h = await client.readHeader();
+  assert.ok(seen.at(-1).url.includes('!G1:J1'));
+  assert.deepEqual([h.emails, h.subject, h.body, h.status], ['Email', 'Subject', 'Message', 'Status']);
+});
