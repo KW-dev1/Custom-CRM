@@ -29,10 +29,11 @@
 
   async function enterRecipient(doc, compose, field, email, timeoutMs) {
     field.focus();
+    // Append (never replace): the field may already hold resolved chips, e.g. earlier Cc recipients.
     if (field.tagName === 'INPUT') OEA.setInputValue(field, email);
-    else OEA.setEditableText(field, email);
-    // Attempt 1: Enter. Attempt 2: ';' terminator, which Outlook also treats as "resolve".
-    const attempts = [() => OEA.pressKey(field, 'Enter', 13), () => { OEA.setEditableText(field, `${email};`); OEA.pressKey(field, 'Enter', 13); }];
+    else OEA.appendEditableText(field, email);
+    // Attempt 1: Enter. Attempt 2: a ';' terminator, which Outlook also treats as "resolve".
+    const attempts = [() => OEA.pressKey(field, 'Enter', 13), () => OEA.appendEditableText(field, ';')];
     for (const attempt of attempts) {
       attempt();
       try {

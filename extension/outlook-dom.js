@@ -197,6 +197,31 @@
     if (method === 'dom') fillByDom(el, lines);
     return method;
   }
+  /**
+   * Type text at the END of a contenteditable without touching its existing content. Recipient
+   * fields hold already-resolved chips, so replacing the content would delete them.
+   */
+  function appendEditableText(el, text) {
+    const doc = el.ownerDocument;
+    el.focus();
+    const sel = doc.defaultView.getSelection && doc.defaultView.getSelection();
+    if (sel) {
+      const range = doc.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    if (typeof doc.execCommand === 'function') {
+      const before = el.textContent;
+      try {
+        if (doc.execCommand('insertText', false, text) && el.textContent !== before) return 'execCommand';
+      } catch { /* fall through to DOM insertion */ }
+    }
+    el.appendChild(doc.createTextNode(text));
+    fireInput(el, text, 'insertText');
+    return 'dom';
+  }
   function pressKey(el, key, keyCode) {
     const init = { key, code: key, keyCode, which: keyCode, bubbles: true, cancelable: true };
     el.dispatchEvent(new root.KeyboardEvent('keydown', init));
@@ -204,15 +229,23 @@
   }
 
   // ---- recipient detection ----
-  /** A resolved recipient chip inside the compose form (outside the To text box itself). */
+  /**
+   * A resolved recipient chip. In Outlook Web (verified against a real compose window) a resolved
+   * address is a non-editable element INSIDE the To/Cc field: span[contenteditable=false]
+   * [aria-label="<address>"]. Raw typed text is a plain text node and never matches. As a fallback
+   * (other layouts) chips outside the field are also accepted.
+   */
   function findRecipientPill(compose, email, field = compose.to) {
     const needle = email.toLowerCase();
+    const hay = (el) => `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''} ${el.textContent || ''}`.toLowerCase();
+    for (const el of field.querySelectorAll('[contenteditable="false"]')) {
+      if (hay(el).includes(needle) && (el.textContent || '').length < 200) return el;
+    }
     const candidates = compose.root.querySelectorAll('[aria-label],[title],span,button,[role="button"],[role="option"]');
     for (const el of candidates) {
       if (el === field || field.contains(el) || el.contains(field)) continue;
       if (compose.body.contains(el) || el.contains(compose.body) || compose.subject === el) continue;
-      const hay = `${el.getAttribute('aria-label') || ''} ${el.getAttribute('title') || ''} ${el.textContent || ''}`.toLowerCase();
-      if (hay.includes(needle) && (el.textContent || '').length < 200) return el;
+      if (hay(el).includes(needle) && (el.textContent || '').length < 200) return el;
     }
     return null;
   }
@@ -229,7 +262,7 @@
 
   Object.assign(OEA, {
     MAIL_PREFIX, OEAError, SELECTORS, isVisible, lowestCommonAncestor, findNewMail, findSubject, findCc, findCcToggle, countCompose, findCompose,
-    detectReadiness, waitFor, extractText, squash, setInputValue, setEditableText, pressKey, findRecipientPill,
+    detectReadiness, waitFor, extractText, squash, setInputValue, setEditableText, appendEditableText, pressKey, findRecipientPill,
     findSendError, findRecipientError, findSentToast,
   });
 })(typeof globalThis !== 'undefined' ? globalThis : window);

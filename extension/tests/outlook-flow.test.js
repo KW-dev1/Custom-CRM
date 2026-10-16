@@ -196,3 +196,26 @@ test('invalid or overlapping CC lists never reach Outlook', async () => {
     assert.equal(o.controls.newMailClicks, 0);
   }
 });
+
+test('several CC addresses: earlier chips are NOT wiped when the next one is typed', async () => {
+  const o = await createOutlook({ sendMode: 'never' });
+  const cc = ['b@example.com', 'c@example.com', 'd@example.com'];
+  const { r } = await run(o, job({ cc }));
+  assert.equal(r.code, 'NO_CONFIRMATION', 'got as far as clicking Send');
+  for (const a of cc) assert.equal(wellOf(o.doc, a), 'cc', a);
+  assert.equal(wellOf(o.doc, 'a@example.com'), 'to');
+});
+test('address that only resolves on a typed ";" is handled (second attempt)', async () => {
+  const o = await createOutlook({ resolveOn: 'semicolon', sendMode: 'never' });
+  const { r } = await run(o, job({ cc: ['b@example.com'] }));
+  assert.equal(r.code, 'NO_CONFIRMATION');
+  assert.equal(wellOf(o.doc, 'a@example.com'), 'to');
+  assert.equal(wellOf(o.doc, 'b@example.com'), 'cc');
+});
+test('the To field holds exactly one chip for the To address and no leftover raw text', async () => {
+  const o = await createOutlook({ sendMode: 'never' });
+  await run(o, job());
+  const to = o.doc.querySelector('[aria-label="To"][contenteditable]');
+  assert.equal(to.querySelectorAll('span[contenteditable="false"]').length, 1);
+  assert.equal(Array.from(to.childNodes).filter((n) => n.nodeType === 3).length, 0);
+});

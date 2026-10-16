@@ -65,3 +65,51 @@ test('extractText treats <br> and block elements as line breaks', async () => {
   d.innerHTML = '<div>a</div><div><br></div><div>b</div>c<br>d';
   assert.equal(o.OEA.extractText(d).replace(/\n+/g, '|'), 'a|b|c|d|');
 });
+
+// ---- recipient chips: regression tests for the real Outlook structure ----
+const bareCompose = async () => {
+  const o = await createOutlook({ pre: 'compose' });
+  return { o, c: o.OEA.findCompose(o.doc) };
+};
+const addChip = (o, field, email) => {
+  const chip = o.doc.createElement('span');
+  chip.setAttribute('contenteditable', 'false'); chip.setAttribute('aria-label', email); chip.textContent = email;
+  field.appendChild(chip);
+  return chip;
+};
+test('a resolved chip INSIDE the To field is recognised (real Outlook layout)', async () => {
+  const { o, c } = await bareCompose();
+  addChip(o, c.to, 'a@example.com');
+  assert.ok(o.OEA.findRecipientPill(c, 'a@example.com'));
+  assert.ok(o.OEA.findRecipientPill(c, 'A@Example.com'), 'case-insensitive');
+});
+test('raw typed text in the field is NOT a resolved recipient', async () => {
+  const { o, c } = await bareCompose();
+  c.to.appendChild(o.doc.createTextNode('a@example.com'));
+  assert.equal(o.OEA.findRecipientPill(c, 'a@example.com'), null);
+});
+test('a chip for a different address does not match', async () => {
+  const { o, c } = await bareCompose();
+  addChip(o, c.to, 'other@example.com');
+  assert.equal(o.OEA.findRecipientPill(c, 'a@example.com'), null);
+});
+test('fallback: a chip outside the field (other layouts) is still recognised', async () => {
+  const { o, c } = await bareCompose();
+  const chip = o.doc.createElement('span');
+  chip.setAttribute('role', 'button'); chip.setAttribute('aria-label', 'a@example.com'); chip.textContent = 'a@example.com';
+  c.root.appendChild(chip);
+  assert.ok(o.OEA.findRecipientPill(c, 'a@example.com'));
+});
+test('appendEditableText keeps existing chips and adds text at the end', async () => {
+  const { o, c } = await bareCompose();
+  addChip(o, c.to, 'first@example.com');
+  o.OEA.appendEditableText(c.to, 'second');
+  assert.equal(c.to.firstChild.getAttribute('aria-label'), 'first@example.com');
+  assert.equal(c.to.lastChild.data, 'second');
+});
+test('real Outlook structure: To has no role=textbox, Cc/Bcc are plain buttons, both are found', async () => {
+  const { o, c } = await bareCompose();
+  assert.equal(c.to.getAttribute('role'), null);
+  assert.ok(o.OEA.findCcToggle(c.root));
+  assert.equal(o.OEA.findCc(c.root), null, 'Cc field is hidden until its button is clicked');
+});
