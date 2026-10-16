@@ -186,8 +186,12 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
       return { state: 'invalid_job' };
     }
 
+    // Only outcomes that may have SENT the email block a re-claimed job. A 'failed' job provably never
+    // reached Send, so once the row is requeued (status cleared) it is safe, and expected, to try again.
     const prev = getCompleted(await store.getCompletedMap(), job.id);
-    if (prev) {
+    if (prev && prev.status === STATUS.FAILED) {
+      await log({ jobId: job.id, stage: 'retry', ok: true, message: 'Retrying a job that previously failed before sending.' });
+    } else if (prev) {
       await finalize(settings, job, prev.status, `Duplicate delivery: this job was already processed locally (${prev.status}). Not sending again.`);
       return { state: 'duplicate' };
     }

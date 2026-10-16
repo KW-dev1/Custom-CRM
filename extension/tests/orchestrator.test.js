@@ -279,3 +279,27 @@ test('a claim error retries soon (not after a full 10-20 min window)', async () 
   const rt = await e.store.getRuntime();
   assert.ok(rt.nextClaimAt - 1_000_000 <= 60000);
 });
+
+test('a job that previously FAILED (never sent) is retried when it is claimed again', async () => {
+  const e = setup({ sendResult: { outcome: 'sent', sendClicked: true, evidence: 'compose window closed' },
+    stored: { completed: { job_1: { status: 'failed', at: 1 } } } });
+  const r = await e.orch.tick();
+  assert.deepEqual(r, { state: 'processed', status: 'sent' });
+  assert.equal(e.calls.send.filter((m) => m.type === 'OEA_SEND_JOB').length, 1);
+  assert.equal((await e.store.getCompletedMap()).job_1.status, 'sent', 'the record is updated to the new outcome');
+});
+test('previously SENT or NEEDS_REVIEW jobs are still blocked from being sent again', async () => {
+  for (const status of ['sent', 'needs_review']) {
+    const e = setup({ sendResult: { outcome: 'sent', evidence: 'x' }, stored: { completed: { job_1: { status, at: 1 } } } });
+    assert.equal((await e.orch.tick()).state, 'duplicate', status);
+    assert.equal(e.calls.send.filter((m) => m.type === 'OEA_SEND_JOB').length, 0, status);
+    assert.equal(e.calls.reports.at(-1).status, status);
+  }
+});
+test('retry after failure that fails again keeps the record as failed', async () => {
+  const e = setup({ sendResult: { outcome: 'failed', sendClicked: false, message: 'still no recipient' },
+    stored: { completed: { job_1: { status: 'failed', at: 1 } } } });
+  await e.orch.tick();
+  assert.equal((await e.store.getCompletedMap()).job_1.status, 'failed');
+  assert.equal(e.calls.reports.at(-1).status, 'failed');
+});
