@@ -1,9 +1,10 @@
 :root {
   --bg: #fff; --fg: #1f2328; --muted: #656d76; --line: #d0d7de; --card: #f6f8fa;
   --primary: #1a73e8; --primary-fg: #fff; --err: #cf222e;
+  --go: #1a7f37; --go-fg: #fff; --stop: #cf222e; --stop-fg: #fff;
 }
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #1b1f24; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --card: #242a31; --primary: #4c8dff; --primary-fg: #0b1220; --err: #ff7b72; }
+  :root { --bg: #1b1f24; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --card: #242a31; --primary: #4c8dff; --primary-fg: #0b1220; --err: #ff7b72; --go: #2ea043; --go-fg: #06210f; --stop: #f85149; --stop-fg: #2b0b09; }
 }
 * { box-sizing: border-box; }
 body { width: 380px; margin: 0; padding: 12px 14px 16px; font: 13px/1.4 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
@@ -41,3 +42,8 @@ form .buttons { margin-top: 12px; }
 #historyMsg { display: block; margin-top: 6px; color: var(--muted); }
 form label.check { display: flex; gap: 8px; align-items: flex-start; font-weight: 400; }
 form label.check input { margin-top: 3px; }
+
+/* Start / Stop: exactly one of them is the active, coloured button; the other is greyed out. */
+button:disabled { opacity: .45; cursor: not-allowed; background: var(--card); color: var(--muted); border-color: var(--line); }
+#start:not(:disabled) { background: var(--go); color: var(--go-fg); border-color: var(--go); font-weight: 600; }
+#stop:not(:disabled) { background: var(--stop); color: var(--stop-fg); border-color: var(--stop); font-weight: 600; }
