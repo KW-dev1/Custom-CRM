@@ -303,3 +303,21 @@ test('retry after failure that fails again keeps the record as failed', async ()
   assert.equal((await e.store.getCompletedMap()).job_1.status, 'failed');
   assert.equal(e.calls.reports.at(-1).status, 'failed');
 });
+
+test('clearHistory lets a previously sent row be sent again on purpose', async () => {
+  const e = setup({ sendResult: { outcome: 'sent', evidence: 'x' }, stored: { completed: { job_1: { status: 'sent', at: 1 } } } });
+  assert.equal((await e.orch.tick()).state, 'duplicate');
+  assert.deepEqual(await e.orch.clearHistory(), { ok: true });
+  assert.deepEqual(await e.store.getCompletedMap(), {});
+  e.advance(11 * MIN);
+  assert.equal((await e.orch.tick()).status, 'sent');
+  assert.equal(e.calls.send.filter((m) => m.type === 'OEA_SEND_JOB').length, 1);
+});
+test('clearHistory is refused while a job is in flight or a report is pending', async () => {
+  const busy = setup({ stored: { run: { jobId: 'x', phase: 'sending', startedAt: 1, updatedAt: 1 }, completed: { a: { status: 'sent', at: 1 } } } });
+  const r1 = await busy.orch.clearHistory();
+  assert.equal(r1.ok, false);
+  assert.ok((await busy.store.getCompletedMap()).a, 'history untouched');
+  const pending = setup({ stored: { pendingReport: { jobId: 'x', status: 'sent' }, completed: { a: { status: 'sent', at: 1 } } } });
+  assert.equal((await pending.orch.clearHistory()).ok, false);
+});

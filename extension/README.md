@@ -92,7 +92,9 @@ Auth: header from settings, default `Authorization: Bearer <key>`. HTTP 401/403 
 1. One job at a time per tick (in-memory flag + persisted `run` record).
 2. In the Outlook tab: a per-job guard; `Send` is clicked at most once; the same id is refused afterwards.
 3. Progress is written to `chrome.storage` **before** the Send click; if that write fails, nothing is sent.
-4. Local completed-job map (last 500). A re-delivered job is **not** re-sent; its prior status is re-reported.
+4. Local completed-job map (last 500). A re-delivered job whose earlier outcome was `sent` or `needs_review`
+   is **not** re-sent; its prior status is re-reported. A job that earlier **failed before sending** is retried.
+   A job id is the row number plus a fingerprint of its content, so a cleared row gets the same id again.
 5. Results are recorded locally *before* reporting. If reporting fails, the result stays pending and
    is delivered before any new job is claimed.
 6. Anything uncertain (no confirmation, error banner, crash/worker restart after the click, channel
@@ -170,6 +172,8 @@ Use a **test** Outlook account and a test backend queue with addresses you contr
 | *Could not find the Cc control* | Outlook's Cc toggle changed; adjust `SELECTORS.cc` / `LABELS.ccToggle` in `outlook-dom.js`. |
 | *Recipient did not resolve* | Outlook may resolve chips differently; adjust `enterRecipient`/`findRecipientPill`. |
 | *Needs review* | Check **Sent Items**, then decide manually; press **Start** to resume. |
+| *Duplicate delivery: already processed locally (sent / needs_review)* | You cleared a row's status to send it again, but the extension remembers sending it. If you really want to resend (after checking Sent Items), click **Clear job history** in the popup, then **Stop** and **Start**. |
+| Cleared a `failed` row but nothing happens | Make sure no draft is open in Outlook, then **Stop** and **Start** (Start fetches immediately). |
 | Backend errors | See *Recent errors* in the popup; DevTools → service worker console shows `[OEA]` logs. |
 
 ## Security

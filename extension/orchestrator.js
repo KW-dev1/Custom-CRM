@@ -254,6 +254,17 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
       await store.patchRuntime({ running: true, consecutiveFailures: 0, nextClaimAt: 0 });
       return this.tick();
     },
+    /**
+     * Forget which jobs were already processed, so rows that were sent / needed review can be sent
+     * again on purpose (after the status cell is cleared). Refused while a job or report is in flight.
+     */
+    async clearHistory() {
+      if (await store.getRun()) return { ok: false, reason: 'A job is being processed right now. Try again in a minute.' };
+      if (await store.getPendingReport()) return { ok: false, reason: 'A result is still waiting to be reported to the backend.' };
+      await store.setCompletedMap({});
+      await log({ stage: 'clear_history', ok: true, message: 'Local job history cleared by the user.' });
+      return { ok: true };
+    },
     async stop() {
       await store.patchRuntime({ running: false });
       await setStatus(UI_STATUS.PAUSED, 'Paused. Press Start to process jobs.');

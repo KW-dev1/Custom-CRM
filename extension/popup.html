@@ -32,6 +32,13 @@
   </section>
 
   <section>
+    <h2>Job history</h2>
+    <p class="muted small">The extension remembers jobs it already sent so it never sends one twice. If you cleared a row's status on purpose to send it again (after checking Outlook's Sent Items), clear this memory first.</p>
+    <div class="buttons"><button id="clearHistory" type="button">Clear job history</button></div>
+    <small id="historyMsg" role="status"></small>
+  </section>
+
+  <section>
     <h2>Settings</h2>
     <form id="form" novalidate>
       <label>Backend API base URL

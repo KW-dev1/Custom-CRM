@@ -101,6 +101,14 @@ $('enabled').addEventListener('change', async (ev) => {
   await store.saveSettings({ ...s, enabled: ev.target.checked });
   chrome.runtime.sendMessage({ type: ev.target.checked ? 'OEA_TICK' : 'OEA_STOP' }).catch(() => {});
 });
+$('clearHistory').addEventListener('click', async () => {
+  const msg = $('historyMsg');
+  if (!confirm('Clear the list of jobs this extension has already processed?\n\nOnly do this if you checked Outlook\'s Sent Items and want a cleared row to be sent again.')) return;
+  try {
+    const r = await chrome.runtime.sendMessage({ type: 'OEA_CLEAR_HISTORY' });
+    msg.textContent = r && r.ok ? 'Job history cleared.' : `Not cleared: ${(r && r.reason) || 'unknown error'}`;
+  } catch (e) { msg.textContent = `Not cleared: ${e.message}`; }
+});
 $('start').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'OEA_START' }).catch(() => {}));
 $('stop').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'OEA_STOP' }).catch(() => {}));
 

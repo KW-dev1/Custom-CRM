@@ -37,3 +37,5 @@ summary { cursor: pointer; color: var(--muted); }
 .err { display: block; min-height: 0; color: var(--err); font-weight: 400; }
 #saveMsg { display: block; margin-top: 6px; color: var(--muted); }
 form .buttons { margin-top: 12px; }
+.small { font-size: 12px; margin: 0 0 8px; }
+#historyMsg { display: block; margin-top: 6px; color: var(--muted); }
