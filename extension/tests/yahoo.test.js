@@ -115,7 +115,13 @@ test('a subject Yahoo\'s own state never registered is caught before Send (no "(
   const y = await createYahoo({ ignoreSubject: true });
   const r = await y.OEA.activeProvider.processJob(job(), ctxOf(y));
   assert.equal(r.outcome, 'failed');
-  assert.equal(r.code, 'VALIDATION_FAILED');
+  assert.equal(r.code, 'SUBJECT_FAILED');
   assert.match(r.message, /subject/i);
   assert.equal(y.c.sendClicks, 0);
+});
+test('when bulk typing is ignored by Yahoo the subject is entered with per-character key events', async () => {
+  const y = await createYahoo({ subjectNeedsKeys: true });
+  const r = await y.OEA.activeProvider.processJob(job(), ctxOf(y));
+  assert.equal(r.outcome, 'sent', r.message);
+  assert.equal(y.composeState.subject, 'Hello there');
 });
