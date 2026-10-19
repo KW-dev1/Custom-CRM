@@ -111,3 +111,17 @@ test('the Outlook flow still registers itself as the active provider', async () 
   assert.equal(o.window.OEA.activeProvider.name, 'outlook');
   assert.equal(o.window.OEA.activeProvider.detectReadiness(o.doc, o.loc).state, 'ready');
 });
+test('a subject Yahoo\'s own state never registered is caught before Send (no "(No subject)" email)', async () => {
+  const y = await createYahoo({ ignoreSubject: true });
+  const r = await y.OEA.activeProvider.processJob(job(), ctxOf(y));
+  assert.equal(r.outcome, 'failed');
+  assert.equal(r.code, 'SUBJECT_FAILED');
+  assert.match(r.message, /subject/i);
+  assert.equal(y.c.sendClicks, 0);
+});
+test('when bulk typing is ignored by Yahoo the subject is entered with per-character key events', async () => {
+  const y = await createYahoo({ subjectNeedsKeys: true });
+  const r = await y.OEA.activeProvider.processJob(job(), ctxOf(y));
+  assert.equal(r.outcome, 'sent', r.message);
+  assert.equal(y.composeState.subject, 'Hello there');
+});

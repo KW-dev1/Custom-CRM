@@ -16,7 +16,7 @@ const SHELL = '<!doctype html><body><nav><button type="button" aria-label="New m
  * opts.bodyEditor: 'normal' | 'flatten'; opts.pre: 'compose'; opts.url
  */
 export async function createYahoo(opts = {}) {
-  const { sendMode = 'close', enterResolves = true, resolve = true, suggest = false, collapse = true, bodyEditor = 'normal', pre = null, url = 'https://mail.yahoo.com/d/folders/1' } = opts;
+  const { sendMode = 'close', enterResolves = true, resolve = true, suggest = false, collapse = true, ignoreSubject = false, subjectNeedsKeys = false, bodyEditor = 'normal', pre = null, url = 'https://mail.yahoo.com/d/folders/1' } = opts;
   const dom = new JSDOM(SHELL, { url, runScripts: 'outside-only', pretendToBeVisual: true });
   const { window } = dom;
   const doc = window.document;
@@ -87,7 +87,9 @@ export async function createYahoo(opts = {}) {
     }
     const subject = el('input', { 'aria-label': 'Subject', placeholder: 'Subject' });
     subject.value = composeState.subject || '';
-    subject.addEventListener('input', () => { composeState.subject = subject.value; composeState.collapsed = true; const h = root.querySelector('[role=heading]'); if (h) h.textContent = subject.value || 'New message'; });
+    subject.addEventListener('keydown', () => { composeState.keyed = true; });
+    subject.addEventListener('keyup', () => { composeState.keyed = false; });
+    subject.addEventListener('input', () => { if (ignoreSubject || (subjectNeedsKeys && !composeState.keyed)) return; composeState.subject = subject.value; composeState.collapsed = true; const h = root.querySelector('[role=heading]'); if (h) h.textContent = subject.value || 'New message'; });
     const wrapper = el('div', { 'data-test-id': 'editorWrapper' });
     const body = el('div', { role: 'textbox', 'aria-label': 'Message body', contenteditable: 'true', 'data-test-id': 'rte', tabindex: '0' });
     body.innerHTML = composeState.bodyHtml || '<div><br></div>';

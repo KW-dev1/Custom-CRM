@@ -89,6 +89,51 @@
     return { first: norm(span.getAttribute('aria-label').replace(/[<>]/g, '')), more: m ? Number(m[1]) : 0 };
   }
 
+  /**
+   * Type into a Yahoo input the way a user does (a real editing command, so the page's own state sees it), falling
+   * back to the framework-safe value setter. Ends with change + blur so the value is committed.
+   */
+  function typeIntoInput(input, value) {
+    const doc = input.ownerDocument;
+    input.focus();
+    try { input.select(); } catch { /* not selectable */ }
+    let used = false;
+    try { used = typeof doc.execCommand === 'function' && doc.execCommand('insertText', false, value) === true; } catch { used = false; }
+    if (!used || input.value !== value) OEA.setInputValue(input, value);
+    input.dispatchEvent(new root.Event('change', { bubbles: true }));
+    input.blur();
+  }
+  /** Type character by character with real key events (keydown, input, keyup), as a last resort for pages that ignore bulk edits. */
+  function typeIntoInputByKeys(input, value) {
+    const win = input.ownerDocument.defaultView;
+    input.focus();
+    OEA.setInputValue(input, '');
+    let acc = '';
+    for (const ch of value) {
+      const init = { key: ch, bubbles: true, cancelable: true };
+      input.dispatchEvent(new win.KeyboardEvent('keydown', init));
+      input.dispatchEvent(new win.KeyboardEvent('keypress', init));
+      acc += ch;
+      Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set.call(input, acc);
+      input.dispatchEvent(new (win.InputEvent || win.Event)('input', { bubbles: true, inputType: 'insertText', data: ch }));
+      input.dispatchEvent(new win.KeyboardEvent('keyup', init));
+    }
+    input.dispatchEvent(new win.Event('change', { bubbles: true }));
+    input.blur();
+  }
+  /** True when the compose title shows the subject (Yahoo's own state has it). */
+  function subjectRegistered(compose, subject) {
+    const heading = readHeading(compose);
+    if (heading === null) return true; // no title element to judge by
+    const want = String(subject).trim().toLowerCase().replace(/\s+/g, ' ');
+    return heading.includes(want.slice(0, 25)) || want.includes(heading);
+  }
+  /** The compose header title; Yahoo shows the subject there once ITS state has it (before that: "New message"). */
+  function readHeading(compose) {
+    const h = Array.from(compose.root.querySelectorAll('[role="heading"]')).find(visible);
+    return h ? norm(h.textContent) : null;
+  }
+
   function detectReadiness(doc, loc) {
     if (loc.hostname !== YAHOO_MAIL_HOST) return { state: 'unexpected_page', message: 'The tab is not on mail.yahoo.com.' };
     if (doc.readyState === 'loading') return { state: 'loading', message: 'Yahoo Mail is still loading.' };
@@ -117,7 +162,7 @@
     YAHOO_MAIL_HOST,
     yahoo: {
       SELECTORS, findNewMail, countCompose, findCompose, findField, recipientRow, pillAddresses, findRecipientPill, findCcToggle,
-      readRecipientSummary, detectReadiness, findSendError, findRecipientError, findSentToast,
+      readRecipientSummary, typeIntoInput, typeIntoInputByKeys, subjectRegistered, readHeading, detectReadiness, findSendError, findRecipientError, findSentToast,
     },
   });
 })(typeof globalThis !== 'undefined' ? globalThis : window);

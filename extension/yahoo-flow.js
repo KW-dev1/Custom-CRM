@@ -40,6 +40,26 @@
     throw new OEAError('RECIPIENT_FAILED', `Yahoo did not turn the address into a recipient in the ${name} field.`);
   }
 
+  /**
+   * Yahoo only counts the subject once its own state has it, which shows up as the compose title changing. Try an
+   * editing command first, then real per-character key events, and give each a moment to register.
+   */
+  async function enterSubject(doc, compose, subject, timeoutMs) {
+    const methods = [(i) => Y.typeIntoInput(i, subject), (i) => Y.typeIntoInputByKeys(i, subject)];
+    for (const method of methods) {
+      const input = Y.findCompose(doc) && Y.findCompose(doc).subject;
+      if (!input) throw new OEAError('SUBJECT_FAILED', 'The Subject field disappeared.');
+      method(input);
+      try {
+        await OEA.waitFor(() => input.value === subject && Y.subjectRegistered(compose, subject), { timeoutMs: Math.min(timeoutMs, 3000), description: 'Yahoo to register the subject', doc });
+        return;
+      } catch (e) {
+        if (e.code !== 'TIMEOUT') throw e;
+      }
+    }
+    throw new OEAError('SUBJECT_FAILED', 'Yahoo did not register the subject (the compose title did not change). Nothing was sent.');
+  }
+
   function validateComposed(doc, job, compose, confirmed) {
     const problems = [];
     const cc = (job.cc || []).map((a) => a.trim().toLowerCase());
@@ -61,6 +81,8 @@
       else if (sum.more && sum.more !== cc.length) problems.push('The number of recipients shown does not match.');
     }
     if ((compose.subject.value || '') !== job.subject) problems.push('Subject does not match.');
+    // The header title mirrors the subject once Yahoo's own state has it; a field that only LOOKS filled leaves "New message".
+    if (!Y.subjectRegistered(compose, job.subject)) problems.push('Yahoo did not register the subject (the compose title did not change).');
     if (!OEA.squash(OEA.extractText(compose.body)).includes(OEA.squash(job.body))) problems.push('Body does not match.');
     else if (!OEA.bodyMatchesLines(compose.body, job.body)) problems.push('Body line breaks do not match.');
     if (compose.send.disabled || compose.send.getAttribute('aria-disabled') === 'true') problems.push('The Send button is disabled.');
@@ -124,14 +146,17 @@
           confirmed.add(addr.toLowerCase());
         }
       }
-      OEA.setInputValue(compose.subject, job.subject);
-      if (compose.subject.value !== job.subject) throw new OEAError('SUBJECT_FAILED', 'Could not set the subject.');
+      const refresh = () => { const live = Y.findCompose(doc); if (live && live.root === compose.root) Object.assign(compose, live); }; // the page may re-render fields
+      refresh();
+      await enterSubject(doc, compose, job.subject, t.recipient);
+      refresh();
       OEA.setEditableText(compose.body, job.body);
       if (!OEA.squash(OEA.extractText(compose.body)).includes(OEA.squash(job.body))) throw new OEAError('BODY_FAILED', 'Could not populate the message body.');
       if (!OEA.bodyMatchesLines(compose.body, job.body)) {
         throw new OEAError('BODY_FORMAT_FAILED', 'Yahoo\'s editor did not keep the message\'s line breaks (they came out merged into fewer lines). Nothing was sent.');
       }
 
+      refresh();
       await ctx.markStage(job.id, 'validating');
       const problems = validateComposed(doc, job, compose, confirmed);
       if (problems.length) throw new OEAError('VALIDATION_FAILED', `Message validation failed: ${problems.join(' ')}`);
