@@ -40,6 +40,17 @@
     throw new OEAError('RECIPIENT_FAILED', `Yahoo did not turn the address into a recipient in the ${name} field.`);
   }
 
+  /** Yahoo ignores typing while its page is not focused (the compose title never picks the subject up). */
+  async function waitForPageFocus(doc, timeoutMs) {
+    if (typeof doc.hasFocus !== 'function') return;
+    try {
+      await OEA.waitFor(() => doc.hasFocus(), { timeoutMs, description: 'the Yahoo tab to have keyboard focus', doc });
+    } catch (e) {
+      if (e.code !== 'TIMEOUT') throw e;
+      throw new OEAError('PAGE_NOT_FOCUSED', 'The Yahoo Mail window is not in the foreground. Yahoo only accepts typing while its window has focus, so keep that window in front and the extension popup closed while it sends. Nothing was sent.');
+    }
+  }
+
   /**
    * Yahoo only counts the subject once its own state has it, which shows up as the compose title changing. Try an
    * editing command first, then real per-character key events, and give each a moment to register.
@@ -96,7 +107,7 @@
    */
   async function processJob(job, ctx) {
     const doc = ctx.doc;
-    const t = { ...OEA.DEFAULT_TIMEOUTS, ...(ctx.timeouts || {}) };
+    const t = { focus: 10000, ...OEA.DEFAULT_TIMEOUTS, ...(ctx.timeouts || {}) };
     const guard = ctx.guard;
     let sendClicked = false;
 
@@ -147,6 +158,7 @@
         }
       }
       const refresh = () => { const live = Y.findCompose(doc); if (live && live.root === compose.root) Object.assign(compose, live); }; // the page may re-render fields
+      await waitForPageFocus(doc, t.focus);
       refresh();
       await enterSubject(doc, compose, job.subject, t.recipient);
       refresh();

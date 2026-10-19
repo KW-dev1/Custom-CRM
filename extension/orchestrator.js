@@ -236,6 +236,8 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
 
     await store.setRun(advanceRun(await store.getRun(), PHASE.SENDING, now()));
     await store.clearInflight();
+    // Some sites (Yahoo) only register typing while their page has keyboard focus: bring the tab to the front first.
+    if (provider.needsFocus && tabs.focus) { try { await tabs.focus(tab); } catch { /* best effort; the page reports if it is still unfocused */ } }
     const stopKeepAlive = keepAlive();
     let rep;
     try {

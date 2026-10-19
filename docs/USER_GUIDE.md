@@ -66,7 +66,7 @@ It does **not** use Microsoft Graph, SMTP or any mail service. It automates the 
 | A **personal Outlook.com account** | Signed in at `https://outlook.live.com/mail/`, **English** interface. |
 | Your contacts as an **.xlsx** file | Layout described in Part 4. |
 
-Not supported: Microsoft 365 / work accounts on other domains, non-English Outlook, desktop Outlook. **Yahoo Mail** (`mail.yahoo.com`, English, current layout) is supported. It was built from captures of one real account, so first test with a row addressed to yourself. Yahoo does not use the "Confirm each send in Sent Items" option; a send counts as done when the compose window closes or Yahoo shows "Your message has been sent.".
+Not supported: Microsoft 365 / work accounts on other domains, non-English Outlook, desktop Outlook. **Yahoo Mail** (`mail.yahoo.com`, English, current layout) is supported. It was built from captures of one real account, so first test with a row addressed to yourself. Yahoo only registers typing while its window has keyboard focus: the extension brings the Yahoo tab to the front before each send, so keep the popup closed and don't switch windows while it sends (otherwise the job fails safely with `PAGE_NOT_FOCUSED`). Yahoo does not use the "Confirm each send in Sent Items" option; a send counts as done when the compose window closes or Yahoo shows "Your message has been sent.".
 
 ## 3. Install the code
 

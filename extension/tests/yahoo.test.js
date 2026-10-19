@@ -125,3 +125,17 @@ test('when bulk typing is ignored by Yahoo the subject is entered with per-chara
   assert.equal(r.outcome, 'sent', r.message);
   assert.equal(y.composeState.subject, 'Hello there');
 });
+test('an unfocused Yahoo window fails before typing the subject, with an explanation, and sends nothing', async () => {
+  const y = await createYahoo({ focused: false });
+  const r = await y.OEA.activeProvider.processJob(job(), ctxOf(y, { timeouts: { ready: 500, compose: 800, recipient: 600, verify: 800, focus: 500 } }));
+  assert.equal(r.outcome, 'failed');
+  assert.equal(r.code, 'PAGE_NOT_FOCUSED');
+  assert.match(r.message, /foreground/);
+  assert.equal(y.c.sendClicks, 0);
+});
+test('a window that gains focus a moment later is waited for', async () => {
+  const t0 = Date.now();
+  const y = await createYahoo({ focused: () => Date.now() - t0 > 600 });
+  const r = await y.OEA.activeProvider.processJob(job(), ctxOf(y));
+  assert.equal(r.outcome, 'sent', r.message);
+});

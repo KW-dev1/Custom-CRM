@@ -36,6 +36,7 @@ function setup({ rand = 0, job = goodJob(), sendResult, sendError, duringSend = 
   };
   const tabs = {
     findMailTab: async (provider) => { env.askedProvider = provider; return env.tab; },
+    focus: async (tab) => { env.focused = (env.focused || 0) + 1; env.focusedTab = tab; },
     send: async (_id, msg) => {
       if (msg.type === 'OEA_CHECK_READY') return env.ready;
       calls.send.push(msg);
@@ -435,4 +436,16 @@ test('a provider that is not available yet is "unsupported": it never claims a j
   await e.orch.tick();
   assert.equal(e.calls.claim, 0);
   assert.match((await e.store.getStatus()).message, /Yahoo Mail automation is not available in this version yet/);
+});
+
+test('Yahoo: the tab is brought to the front before the job is sent; Outlook is not touched', async () => {
+  const y = setup({ job: goodJob() });
+  await y.area.set({ settings: { apiBaseUrl: 'https://api.example.com', apiKey: 'k-12345', enabled: true, provider: 'yahoo' } });
+  await y.orch.tick();
+  assert.equal(y.calls.send.length, 1);
+  assert.equal(y.focused, 1);
+  const o = setup({ job: goodJob() });
+  await o.orch.tick();
+  assert.equal(o.calls.send.length, 1);
+  assert.equal(o.focused || 0, 0);
 });

@@ -6,7 +6,7 @@ export const OUTLOOK_TAB_PATTERN = 'https://outlook.live.com/mail/*';
 // Mail providers the extension can drive. Each Chrome profile uses ONE provider and one account.
 export const PROVIDERS = Object.freeze({
   outlook: Object.freeze({ label: 'Outlook Web', openUrl: 'outlook.live.com/mail', tabPattern: OUTLOOK_TAB_PATTERN }),
-  yahoo: Object.freeze({ label: 'Yahoo Mail', openUrl: 'mail.yahoo.com', tabPattern: 'https://mail.yahoo.com/*' }),
+  yahoo: Object.freeze({ label: 'Yahoo Mail', openUrl: 'mail.yahoo.com', tabPattern: 'https://mail.yahoo.com/*', needsFocus: true }),
 });
 export const DEFAULT_PROVIDER = 'outlook';
 
