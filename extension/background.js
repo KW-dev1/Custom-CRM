@@ -1,7 +1,7 @@
 // MV3 service worker: wires chrome.* APIs to the orchestrator. No long-lived in-memory state;
 // processing is driven by alarms and popup messages.
 
-import { OUTLOOK_TAB_PATTERN } from './config.js';
+import { PROVIDERS } from './config.js';
 import * as api from './api.js';
 import { createStore } from './store.js';
 import { createLogger } from './logger.js';
@@ -16,8 +16,8 @@ chrome.storage.onChanged.addListener((c) => { if (c.settings) refreshSecrets(); 
 const logger = createLogger({ store, secrets: () => secrets });
 
 const tabs = {
-  async findOutlookTab() {
-    const found = await chrome.tabs.query({ url: OUTLOOK_TAB_PATTERN });
+  async findMailTab(provider) {
+    const found = await chrome.tabs.query({ url: (PROVIDERS[provider] || PROVIDERS.outlook).tabPattern });
     if (!found.length) return null;
     // Never open extra tabs; prefer the active one, otherwise the most recently used.
     return found.find((t) => t.active) || found.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))[0];

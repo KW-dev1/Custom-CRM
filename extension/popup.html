@@ -41,6 +41,13 @@
   <section>
     <h2>Settings</h2>
     <form id="form" novalidate>
+      <label>Mail provider <small class="muted">(this Chrome profile uses one provider and one account)</small>
+        <select id="provider">
+          <option value="outlook">Outlook Web (outlook.live.com)</option>
+          <option value="yahoo">Yahoo Mail (mail.yahoo.com)</option>
+        </select>
+        <small class="err" id="err-provider"></small>
+      </label>
       <label>Backend API base URL
         <input id="apiBaseUrl" type="url" placeholder="https://api.example.com" autocomplete="off">
         <small class="err" id="err-apiBaseUrl"></small>

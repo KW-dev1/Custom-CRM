@@ -2,7 +2,7 @@
 // between ticks: everything important is persisted so a suspended service worker is harmless.
 // All side effects are injected, so the whole flow is unit-testable.
 
-import { validateSettings, STATUS, UI_STATUS } from './config.js';
+import { validateSettings, STATUS, UI_STATUS, PROVIDERS } from './config.js';
 import { validateJob, ApiError } from './api.js';
 import {
   PHASE, startRun, advanceRun, getCompleted, recordCompleted, classifyInterrupted, resultToReport, STAGE,
@@ -161,9 +161,10 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
       return { state: 'waiting' };
     }
 
-    const tab = await tabs.findOutlookTab();
+    const provider = PROVIDERS[settings.provider];
+    const tab = await tabs.findMailTab(settings.provider);
     if (!tab) {
-      await setStatus(UI_STATUS.WAITING_OUTLOOK, 'Open Outlook Web (outlook.live.com/mail) in a tab and sign in.');
+      await setStatus(UI_STATUS.WAITING_OUTLOOK, `Open ${provider.label} (${provider.openUrl}) in a tab and sign in.`);
       scheduleNext(cfg.pollSec);
       return { state: 'no_tab' };
     }
@@ -172,10 +173,11 @@ export function createOrchestrator({ store, api, tabs, logger, now = Date.now, s
     catch { ready = { state: 'no_content_script' }; }
     if (!ready || ready.state !== 'ready') {
       const why = {
-        loading: 'Outlook is still loading.', signed_out: 'Outlook is signed out; please sign in.',
-        unexpected_page: 'The Outlook tab is not on the mail page.',
-        no_content_script: 'The Outlook tab is not responding; reload it.',
-      }[ready && ready.state] || 'Outlook is not ready.';
+        loading: `${provider.label} is still loading.`, signed_out: `${provider.label} is signed out; please sign in.`,
+        unexpected_page: `The ${provider.label} tab is not on the mail page.`,
+        no_content_script: `The ${provider.label} tab is not responding; reload it.`,
+        unsupported: `${provider.label} automation is not available in this version yet.`,
+      }[ready && ready.state] || `${provider.label} is not ready.`;
       await setStatus(UI_STATUS.WAITING_OUTLOOK, why);
       scheduleNext(cfg.pollSec);
       return { state: 'outlook_not_ready' };
