@@ -61,6 +61,10 @@
       else if (sum.more && sum.more !== cc.length) problems.push('The number of recipients shown does not match.');
     }
     if ((compose.subject.value || '') !== job.subject) problems.push('Subject does not match.');
+    // The header title mirrors the subject once Yahoo's own state has it; a field that only LOOKS filled leaves "New message".
+    const heading = Y.readHeading(compose);
+    const want = job.subject.trim().toLowerCase().replace(/\s+/g, ' ');
+    if (heading !== null && !(heading.includes(want.slice(0, 25)) || want.includes(heading))) problems.push('Yahoo did not register the subject (the compose title did not change).');
     if (!OEA.squash(OEA.extractText(compose.body)).includes(OEA.squash(job.body))) problems.push('Body does not match.');
     else if (!OEA.bodyMatchesLines(compose.body, job.body)) problems.push('Body line breaks do not match.');
     if (compose.send.disabled || compose.send.getAttribute('aria-disabled') === 'true') problems.push('The Send button is disabled.');
@@ -124,7 +128,7 @@
           confirmed.add(addr.toLowerCase());
         }
       }
-      OEA.setInputValue(compose.subject, job.subject);
+      Y.typeIntoInput(compose.subject, job.subject);
       if (compose.subject.value !== job.subject) throw new OEAError('SUBJECT_FAILED', 'Could not set the subject.');
       OEA.setEditableText(compose.body, job.body);
       if (!OEA.squash(OEA.extractText(compose.body)).includes(OEA.squash(job.body))) throw new OEAError('BODY_FAILED', 'Could not populate the message body.');

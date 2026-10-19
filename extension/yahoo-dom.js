@@ -89,6 +89,26 @@
     return { first: norm(span.getAttribute('aria-label').replace(/[<>]/g, '')), more: m ? Number(m[1]) : 0 };
   }
 
+  /**
+   * Type into a Yahoo input the way a user does (a real editing command, so the page's own state sees it), falling
+   * back to the framework-safe value setter. Ends with change + blur so the value is committed.
+   */
+  function typeIntoInput(input, value) {
+    const doc = input.ownerDocument;
+    input.focus();
+    try { input.select(); } catch { /* not selectable */ }
+    let used = false;
+    try { used = typeof doc.execCommand === 'function' && doc.execCommand('insertText', false, value) === true; } catch { used = false; }
+    if (!used || input.value !== value) OEA.setInputValue(input, value);
+    input.dispatchEvent(new root.Event('change', { bubbles: true }));
+    input.blur();
+  }
+  /** The compose header title; Yahoo shows the subject there once ITS state has it (before that: "New message"). */
+  function readHeading(compose) {
+    const h = Array.from(compose.root.querySelectorAll('[role="heading"]')).find(visible);
+    return h ? norm(h.textContent) : null;
+  }
+
   function detectReadiness(doc, loc) {
     if (loc.hostname !== YAHOO_MAIL_HOST) return { state: 'unexpected_page', message: 'The tab is not on mail.yahoo.com.' };
     if (doc.readyState === 'loading') return { state: 'loading', message: 'Yahoo Mail is still loading.' };
@@ -117,7 +137,7 @@
     YAHOO_MAIL_HOST,
     yahoo: {
       SELECTORS, findNewMail, countCompose, findCompose, findField, recipientRow, pillAddresses, findRecipientPill, findCcToggle,
-      readRecipientSummary, detectReadiness, findSendError, findRecipientError, findSentToast,
+      readRecipientSummary, typeIntoInput, readHeading, detectReadiness, findSendError, findRecipientError, findSentToast,
     },
   });
 })(typeof globalThis !== 'undefined' ? globalThis : window);
