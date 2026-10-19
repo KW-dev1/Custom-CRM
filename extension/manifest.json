@@ -51,6 +51,8 @@
         "https://mail.yahoo.com/*"
       ],
       "js": [
+        "outlook-dom.js",
+        "outlook-flow.js",
         "yahoo-dom.js",
         "yahoo-flow.js",
         "content.js"

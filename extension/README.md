@@ -209,7 +209,7 @@ Use a **test** Outlook account and a test backend queue with addresses you contr
 
 ## Known limitations
 
-- Outlook Web (`outlook.live.com`, personal accounts) is the only working provider; English UI, one mail tab used at a time. A Yahoo Mail provider is a placeholder until real page samples are captured (`docs/CAPTURE_DOM.md`).
+- Outlook Web (`outlook.live.com`, personal accounts) and Yahoo Mail (`mail.yahoo.com`, current layout) are supported; English UI, one mail tab used at a time. The Yahoo selectors come from DOM captures of one real account and are tested only against a simulated page, so try it with your own address first. Yahoo does not support "Confirm each send in Sent Items" (that option is ignored); a send counts as done when the compose window closes or Yahoo shows "Your message has been sent.".
 - Selectors/recipient-chip detection are heuristics validated only against a simulated page.
 - Success evidence is the compose window closing or a sent toast, plus the optional Sent Items confirmation.
 - Rows are sent strictly one at a time; Sent Items matching assumes at least about a minute between emails with the same subject.

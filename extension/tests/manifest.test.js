@@ -23,7 +23,7 @@ test('content scripts are restricted to the two supported webmail sites, each wi
   const by = Object.fromEntries(m.content_scripts.map((c) => [c.matches[0], c]));
   assert.deepEqual(m.content_scripts.map((c) => c.matches), [['https://outlook.live.com/mail/*'], ['https://mail.yahoo.com/*']]);
   assert.deepEqual(by['https://outlook.live.com/mail/*'].js, ['outlook-dom.js', 'outlook-flow.js', 'content.js']);
-  assert.deepEqual(by['https://mail.yahoo.com/*'].js, ['yahoo-dom.js', 'yahoo-flow.js', 'content.js']);
+  assert.deepEqual(by['https://mail.yahoo.com/*'].js, ['outlook-dom.js', 'outlook-flow.js', 'yahoo-dom.js', 'yahoo-flow.js', 'content.js']);
 });
 test('every file referenced by the manifest exists', () => {
   const files = [m.action.default_popup, m.background.service_worker, ...m.content_scripts.flatMap((c) => c.js), ...Object.values(m.icons)];
