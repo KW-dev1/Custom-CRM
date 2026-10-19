@@ -1,10 +1,10 @@
 // Popup UI. Uses textContent only (never innerHTML) so job data / errors cannot inject markup.
-import { validateSettings, normalizeSettings, backendOriginPattern, DEFAULT_SETTINGS } from './config.js';
+import { validateSettings, normalizeSettings, backendOriginPattern, DEFAULT_SETTINGS, PROVIDERS } from './config.js';
 import { createStore, KEYS } from './store.js';
 
 const store = createStore(chrome.storage.local);
 const $ = (id) => document.getElementById(id);
-const FIELDS = ['apiBaseUrl', 'apiKey', 'profileName', 'authHeader', 'authScheme', 'claimMethod', 'claimPath', 'statusMethod', 'statusPath', 'jobStatePath', 'fetchMinMinutes', 'fetchMaxMinutes', 'pauseAfterProblems'];
+const FIELDS = ['provider', 'apiBaseUrl', 'apiKey', 'profileName', 'authHeader', 'authScheme', 'claimMethod', 'claimPath', 'statusMethod', 'statusPath', 'jobStatePath', 'fetchMinMinutes', 'fetchMaxMinutes', 'pauseAfterProblems'];
 
 const LABELS = {
   not_configured: 'Not configured', waiting_outlook: 'Waiting for Outlook', ready: 'Ready',
@@ -30,7 +30,8 @@ async function renderStatus() {
   if (!validateSettings(settings).ok) code = 'not_configured';
   else if (!settings.enabled || !runtime.running) { code = 'paused'; msg = settings.enabled ? 'Paused. Press Start to process jobs.' : 'Automation is disabled.'; }
   const badge = $('badge');
-  badge.textContent = LABELS[code] || code;
+  const providerLabel = (PROVIDERS[settings.provider] || PROVIDERS.outlook).label;
+  badge.textContent = code === 'waiting_outlook' ? `Waiting for ${providerLabel}` : (LABELS[code] || code);
   badge.dataset.status = code;
   $('statusMsg').textContent = msg;
   $('enabled').checked = settings.enabled;

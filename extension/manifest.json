@@ -2,22 +2,61 @@
   "manifest_version": 3,
   "name": "Outlook Email Automation",
   "version": "0.1.0",
-  "description": "Sends queued email jobs from your backend through Outlook Web using DOM automation.",
+  "description": "Sends queued email jobs from your backend through Outlook Web or Yahoo Mail using DOM automation.",
   "minimum_chrome_version": "120",
-  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
   "action": {
     "default_title": "Outlook Email Automation",
     "default_popup": "popup.html",
-    "default_icon": { "16": "icons/icon16.png", "48": "icons/icon48.png" }
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png"
+    }
   },
-  "background": { "service_worker": "background.js", "type": "module" },
-  "permissions": ["storage", "alarms"],
-  "host_permissions": ["https://outlook.live.com/*"],
-  "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://outlook.live.com/*",
+    "https://mail.yahoo.com/*"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
   "content_scripts": [
     {
-      "matches": ["https://outlook.live.com/mail/*"],
-      "js": ["outlook-dom.js", "outlook-flow.js", "content.js"],
+      "matches": [
+        "https://outlook.live.com/mail/*"
+      ],
+      "js": [
+        "outlook-dom.js",
+        "outlook-flow.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://mail.yahoo.com/*"
+      ],
+      "js": [
+        "outlook-dom.js",
+        "outlook-flow.js",
+        "yahoo-dom.js",
+        "yahoo-flow.js",
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],

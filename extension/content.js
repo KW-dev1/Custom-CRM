@@ -15,7 +15,7 @@
     if (sender.id !== chrome.runtime.id || !msg || typeof msg.type !== 'string') return false;
 
     if (msg.type === 'OEA_CHECK_READY') {
-      sendResponse(OEA.detectReadiness(document, location));
+      sendResponse(OEA.activeProvider.detectReadiness(document, location));
       return false;
     }
     if (msg.type === 'OEA_SEND_JOB') {
@@ -25,7 +25,7 @@
         let result;
         try {
           const options = { verifySentItems: Boolean(msg.options && msg.options.verifySentItems === true) };
-          result = await OEA.processJob(job, { doc: document, loc: location, guard, markStage, options });
+          result = await OEA.activeProvider.processJob(job, { doc: document, loc: location, guard, markStage, options });
         } catch (e) {
           result = { outcome: guard.processed.has(jobId) ? 'uncertain' : 'failed', sendClicked: guard.processed.has(jobId), code: 'UNEXPECTED', message: `Unexpected error: ${e && e.message}` };
         }

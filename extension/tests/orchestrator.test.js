@@ -35,7 +35,7 @@ function setup({ rand = 0, job = goodJob(), sendResult, sendError, duringSend = 
     validateJob,
   };
   const tabs = {
-    findOutlookTab: async () => env.tab,
+    findMailTab: async (provider) => { env.askedProvider = provider; return env.tab; },
     send: async (_id, msg) => {
       if (msg.type === 'OEA_CHECK_READY') return env.ready;
       calls.send.push(msg);
@@ -399,7 +399,7 @@ test('a permanently refused report (409) does not block the extension forever, n
     store: e.store, now: () => 1_000_000 + e.clockOffset, logger: { log: async () => {} }, scheduleNext: () => {}, random: () => 0,
     api: { claimJob: async () => { e.calls.claim++; return goodJob(); }, getJobState: async () => null, validateJob,
       reportStatus: async (_s, r) => { if (r.status === 'processing') return; throw refuse; } },
-    tabs: { findOutlookTab: async () => e.tab, send: async (_i, m) => (m.type === 'OEA_CHECK_READY' ? { state: 'ready' } : { outcome: 'sent', evidence: 'x' }) },
+    tabs: { findMailTab: async () => e.tab, send: async (_i, m) => (m.type === 'OEA_CHECK_READY' ? { state: 'ready' } : { outcome: 'sent', evidence: 'x' }) },
   });
   e.clockOffset = 0;
   await e.orch.tick();
@@ -408,4 +408,31 @@ test('a permanently refused report (409) does not block the extension forever, n
   assert.equal((await e.store.getRuntime()).running, false);
   assert.equal((await e.store.getCompletedMap()).job_1.status, 'sent', 'local record kept: never resent');
   assert.match((await e.store.getStatus()).message, /refused the result/);
+});
+
+// ---- provider-specific messages and tab lookup ----
+test('the tab lookup uses the configured provider, and messages name it', async () => {
+  const e = setup({ job: null });
+  await e.area.set({ settings: { apiBaseUrl: 'https://api.example.com', apiKey: 'k-12345', enabled: true, provider: 'yahoo' } });
+  e.tab = null;
+  await e.orch.tick();
+  assert.equal(e.askedProvider, 'yahoo');
+  const st = await e.store.getStatus();
+  assert.equal(st.code, 'waiting_outlook');
+  assert.match(st.message, /Open Yahoo Mail \(mail\.yahoo\.com\)/);
+});
+test('the default provider is outlook', async () => {
+  const e = setup({ job: null });
+  e.tab = null;
+  await e.orch.tick();
+  assert.equal(e.askedProvider, 'outlook');
+  assert.match((await e.store.getStatus()).message, /Open Outlook Web \(outlook\.live\.com\/mail\)/);
+});
+test('a provider that is not available yet is "unsupported": it never claims a job', async () => {
+  const e = setup({ job: goodJob() });
+  await e.area.set({ settings: { apiBaseUrl: 'https://api.example.com', apiKey: 'k-12345', enabled: true, provider: 'yahoo' } });
+  e.ready = { state: 'unsupported' };
+  await e.orch.tick();
+  assert.equal(e.calls.claim, 0);
+  assert.match((await e.store.getStatus()).message, /Yahoo Mail automation is not available in this version yet/);
 });
