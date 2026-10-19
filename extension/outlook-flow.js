@@ -216,4 +216,5 @@
   }
 
   Object.assign(OEA, { processJob, validateJobFields, DEFAULT_TIMEOUTS });
+  OEA.activeProvider = { name: 'outlook', detectReadiness: OEA.detectReadiness, processJob };
 })(typeof globalThis !== 'undefined' ? globalThis : window);

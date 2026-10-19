@@ -12,25 +12,28 @@ test('Manifest V3 with a popup and module service worker', () => {
 });
 test('permissions are minimal', () => {
   assert.deepEqual([...m.permissions].sort(), ['alarms', 'storage']);
-  assert.deepEqual(m.host_permissions, ['https://outlook.live.com/*']);
+  assert.deepEqual(m.host_permissions, ['https://outlook.live.com/*', 'https://mail.yahoo.com/*'], 'only the two supported webmail sites');
 });
 test('no broad required host access; optional hosts are https or localhost only', () => {
   for (const h of m.optional_host_permissions) assert.match(h, /^(https:\/\/\*\/\*|http:\/\/(localhost|127\.0\.0\.1)\/\*)$/);
   assert.ok(!JSON.stringify(m.host_permissions).includes('<all_urls>'));
 });
-test('content script is restricted to Outlook mail', () => {
-  assert.equal(m.content_scripts.length, 1);
-  assert.deepEqual(m.content_scripts[0].matches, ['https://outlook.live.com/mail/*']);
+test('content scripts are restricted to the two supported webmail sites, each with its own provider files', () => {
+  assert.equal(m.content_scripts.length, 2);
+  const by = Object.fromEntries(m.content_scripts.map((c) => [c.matches[0], c]));
+  assert.deepEqual(m.content_scripts.map((c) => c.matches), [['https://outlook.live.com/mail/*'], ['https://mail.yahoo.com/*']]);
+  assert.deepEqual(by['https://outlook.live.com/mail/*'].js, ['outlook-dom.js', 'outlook-flow.js', 'content.js']);
+  assert.deepEqual(by['https://mail.yahoo.com/*'].js, ['yahoo-dom.js', 'yahoo-flow.js', 'content.js']);
 });
 test('every file referenced by the manifest exists', () => {
-  const files = [m.action.default_popup, m.background.service_worker, ...m.content_scripts[0].js, ...Object.values(m.icons)];
+  const files = [m.action.default_popup, m.background.service_worker, ...m.content_scripts.flatMap((c) => c.js), ...Object.values(m.icons)];
   for (const f of files) assert.ok(existsSync(new URL(f, root)), f);
 });
 test('CSP forbids remote and inline script', () => {
   assert.ok(!/unsafe-eval|unsafe-inline|https?:/.test(m.content_security_policy.extension_pages));
 });
 test('source contains no eval / Function constructor / remote script loading / innerHTML', () => {
-  for (const f of ['api.js', 'background.js', 'config.js', 'content.js', 'logger.js', 'orchestrator.js', 'outlook-dom.js', 'outlook-flow.js', 'popup.js', 'state.js', 'store.js']) {
+  for (const f of ['api.js', 'background.js', 'config.js', 'content.js', 'logger.js', 'orchestrator.js', 'outlook-dom.js', 'outlook-flow.js', 'yahoo-dom.js', 'yahoo-flow.js', 'popup.js', 'state.js', 'store.js']) {
     const src = readFileSync(new URL(f, root), 'utf8');
     assert.ok(!/\beval\s*\(|new Function\s*\(|importScripts|document\.write|\.innerHTML\s*=/.test(src), f);
   }
