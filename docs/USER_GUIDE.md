@@ -66,7 +66,7 @@ It does **not** use Microsoft Graph, SMTP or any mail service. It automates the 
 | A **personal Outlook.com account** | Signed in at `https://outlook.live.com/mail/`, **English** interface. |
 | Your contacts as an **.xlsx** file | Layout described in Part 4. |
 
-Not supported: Microsoft 365 / work accounts on other domains, non-English Outlook, desktop Outlook.
+Not supported: Microsoft 365 / work accounts on other domains, non-English Outlook, desktop Outlook. **Yahoo Mail** (`mail.yahoo.com`) is being added: the selector exists but the automation is not written yet; it needs samples of the real page (see [`CAPTURE_DOM.md`](CAPTURE_DOM.md)).
 
 ## 3. Install the code
 
@@ -247,6 +247,7 @@ Open the extension popup and fill in **Settings**:
 
 | Field | What to enter |
 |---|---|
+| **Mail provider** | `Outlook Web` (default) or `Yahoo Mail`. Each Chrome profile uses one provider and one account. **Yahoo Mail is not available yet**: selecting it only shows "not available in this version yet" and never claims or sends anything. |
 | **Backend API base URL** | `http://localhost:3000` (backend on the same computer). A remote backend must use `https://`. |
 | **Profile name** | A short label for this Chrome profile / Outlook account, e.g. `outlook-A`. Use a **different** name in every profile. **Labels only, no email addresses.** Optional with a single account. |
 | **API key / token** | Exactly the `API_KEYS` value from `backend/.env`. |

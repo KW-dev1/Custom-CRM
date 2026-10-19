@@ -209,7 +209,7 @@ Use a **test** Outlook account and a test backend queue with addresses you contr
 
 ## Known limitations
 
-- Only `outlook.live.com` (personal Outlook), English UI, one Outlook tab used at a time.
+- Outlook Web (`outlook.live.com`, personal accounts) is the only working provider; English UI, one mail tab used at a time. A Yahoo Mail provider is a placeholder until real page samples are captured (`docs/CAPTURE_DOM.md`).
 - Selectors/recipient-chip detection are heuristics validated only against a simulated page.
 - Success evidence is the compose window closing or a sent toast, plus the optional Sent Items confirmation.
 - Rows are sent strictly one at a time; Sent Items matching assumes at least about a minute between emails with the same subject.
