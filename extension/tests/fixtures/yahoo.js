@@ -16,7 +16,7 @@ const SHELL = '<!doctype html><body><nav><button type="button" aria-label="New m
  * opts.bodyEditor: 'normal' | 'flatten'; opts.pre: 'compose'; opts.url
  */
 export async function createYahoo(opts = {}) {
-  const { sendMode = 'close', enterResolves = true, resolve = true, suggest = false, collapse = true, ignoreSubject = false, subjectNeedsKeys = false, bodyEditor = 'normal', pre = null, url = 'https://mail.yahoo.com/d/folders/1' } = opts;
+  const { sendMode = 'close', enterResolves = true, resolve = true, suggest = false, collapse = true, ignoreSubject = false, focused = true, subjectNeedsKeys = false, bodyEditor = 'normal', pre = null, url = 'https://mail.yahoo.com/d/folders/1' } = opts;
   const dom = new JSDOM(SHELL, { url, runScripts: 'outside-only', pretendToBeVisual: true });
   const { window } = dom;
   const doc = window.document;
@@ -119,6 +119,7 @@ export async function createYahoo(opts = {}) {
     proto.execCommand = function (cmd, ui, val) { return cmd === 'insertParagraph' || cmd === 'insertLineBreak' ? false : orig ? orig.call(this, cmd, ui, val) : false; };
   }
   if (pre === 'compose') { open = true; render(); }
+  doc.hasFocus = () => (typeof focused === 'function' ? focused() : focused);
   for (const code of SCRIPTS) window.eval(code);
   return { dom, window, doc, loc: window.location, c, chips, composeState, OEA: window.OEA };
 }

@@ -22,6 +22,10 @@ const tabs = {
     // Never open extra tabs; prefer the active one, otherwise the most recently used.
     return found.find((t) => t.active) || found.sort((a, b) => (b.lastAccessed || 0) - (a.lastAccessed || 0))[0];
   },
+  async focus(tab) {
+    await chrome.tabs.update(tab.id, { active: true });
+    await chrome.windows.update(tab.windowId, { focused: true });
+  },
   send: (tabId, msg) => chrome.tabs.sendMessage(tabId, msg),
 };
 
