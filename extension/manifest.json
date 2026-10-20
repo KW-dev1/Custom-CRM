@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Outlook Email Automation",
   "version": "0.1.0",
-  "description": "Sends queued email jobs from your backend through Outlook Web or Yahoo Mail using DOM automation.",
+  "description": "Sends queued email jobs from your backend through Outlook Web, Yahoo Mail or Gmail using DOM automation.",
   "minimum_chrome_version": "120",
   "icons": {
     "16": "icons/icon16.png",
@@ -27,7 +27,8 @@
   ],
   "host_permissions": [
     "https://outlook.live.com/*",
-    "https://mail.yahoo.com/*"
+    "https://mail.yahoo.com/*",
+    "https://mail.google.com/*"
   ],
   "optional_host_permissions": [
     "https://*/*",
@@ -55,6 +56,19 @@
         "outlook-flow.js",
         "yahoo-dom.js",
         "yahoo-flow.js",
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://mail.google.com/mail/*"
+      ],
+      "js": [
+        "outlook-dom.js",
+        "outlook-flow.js",
+        "gmail-dom.js",
+        "gmail-flow.js",
         "content.js"
       ],
       "run_at": "document_idle"

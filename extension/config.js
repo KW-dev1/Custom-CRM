@@ -7,6 +7,7 @@ export const OUTLOOK_TAB_PATTERN = 'https://outlook.live.com/mail/*';
 export const PROVIDERS = Object.freeze({
   outlook: Object.freeze({ label: 'Outlook Web', openUrl: 'outlook.live.com/mail', tabPattern: OUTLOOK_TAB_PATTERN }),
   yahoo: Object.freeze({ label: 'Yahoo Mail', openUrl: 'mail.yahoo.com', tabPattern: 'https://mail.yahoo.com/*', needsFocus: true }),
+  gmail: Object.freeze({ label: 'Gmail', openUrl: 'mail.google.com', tabPattern: 'https://mail.google.com/mail/*', needsFocus: true }),
 });
 export const DEFAULT_PROVIDER = 'outlook';
 
@@ -38,7 +39,7 @@ export const UI_STATUS = Object.freeze({
 export const DEFAULT_SETTINGS = Object.freeze({
   apiBaseUrl: '',
   apiKey: '',
-  provider: DEFAULT_PROVIDER, // 'outlook' | 'yahoo': which webmail this Chrome profile drives
+  provider: DEFAULT_PROVIDER, // 'outlook' | 'yahoo' | 'gmail': which webmail this Chrome profile drives
   profileName: '', // names this Chrome profile / Outlook account to the backend (X-Client-Id); empty = "default"
   authHeader: 'Authorization',
   authScheme: 'Bearer', // set to '' to send the raw key in the header

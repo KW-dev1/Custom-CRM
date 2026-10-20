@@ -55,13 +55,14 @@ test('pauseAfterProblems: default 3, whole number 1-20', () => {
   for (const bad of [0, 21, 2.5, 'abc']) assert.ok(validateSettings({ ...goodSettings(), pauseAfterProblems: bad }).errors.pauseAfterProblems, String(bad));
 });
 
-test('provider: defaults to outlook, accepts outlook/yahoo (any case), rejects others', async () => {
+test('provider: defaults to outlook, accepts outlook/yahoo/gmail (any case), rejects others', async () => {
   const { PROVIDERS } = await import('../config.js');
   assert.equal(normalizeSettings(goodSettings()).provider, 'outlook');
   assert.equal(normalizeSettings({ ...goodSettings(), provider: ' Yahoo ' }).provider, 'yahoo');
   assert.equal(validateSettings({ ...goodSettings(), provider: 'yahoo' }).ok, true);
-  assert.ok(validateSettings({ ...goodSettings(), provider: 'gmail' }).errors.provider);
-  assert.deepEqual(Object.keys(PROVIDERS), ['outlook', 'yahoo']);
+  assert.equal(validateSettings({ ...goodSettings(), provider: 'gmail' }).ok, true);
+  assert.ok(validateSettings({ ...goodSettings(), provider: 'aol' }).errors.provider);
+  assert.deepEqual(Object.keys(PROVIDERS), ['outlook', 'yahoo', 'gmail']);
   assert.equal(PROVIDERS.yahoo.tabPattern, 'https://mail.yahoo.com/*');
   assert.equal(PROVIDERS.outlook.tabPattern, 'https://outlook.live.com/mail/*');
 });
