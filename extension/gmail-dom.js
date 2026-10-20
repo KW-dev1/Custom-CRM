@@ -52,8 +52,11 @@
   function findField(compose, name) {
     return Array.from(compose.root.querySelectorAll('input[role="combobox"],input[type="text"]')).find((i) => norm(i.getAttribute('aria-label')) === FIELD_LABELS[name] && visible(i)) || null;
   }
-  /** The element holding a field's chips: the input's listbox, else its nearest ancestor without another recipient input. */
+  /** The element holding a field's chips: div[name=to|cc|bcc] (verified), else the input's listbox, else its nearest ancestor. */
   function chipScope(compose, input) {
+    const key = Object.keys(FIELD_LABELS).find((k) => FIELD_LABELS[k] === norm(input.getAttribute('aria-label')));
+    const named = key && Array.from(compose.root.querySelectorAll(`div[name="${key.toLowerCase()}"]`)).find((d) => d.querySelector('input') === input || d.contains(input) || d.parentElement.contains(input));
+    if (named && named.querySelector('[role="option"]') !== null) return named;
     const lb = input.closest('[role="listbox"]');
     if (lb && compose.root.contains(lb)) return lb;
     let best = input.parentElement;
@@ -75,6 +78,12 @@
     const needle = norm(email);
     return chips(compose, input).find((c) => chipText(c).includes(needle)) || null;
   }
+  /** Gmail keeps its own copy of the subject in a hidden input[name=subject]; null when that input is not there. */
+  function readSubjectMirror(compose) {
+    const h = compose.root.querySelector('input[type="hidden"][name="subject"]');
+    return h ? h.value : null;
+  }
+  const subjectRegistered = (compose, subject) => { const m = readSubjectMirror(compose); return m === null || m === subject; };
   /** The "Cc" link that opens the Cc row. */
   function findCcToggle(compose) {
     return Array.from(compose.root.querySelectorAll('[role="link"],[role="button"],span')).find((el) => visible(el) && /^add cc recipients/.test(norm(el.getAttribute('aria-label') || ''))) || null;
@@ -112,6 +121,6 @@
 
   Object.assign(OEA, {
     GMAIL_MAIL_HOST,
-    gmail: { countCompose, findNewMail, findCompose, findField, chipState, findRecipientPill, findCcToggle, pressButton, detectReadiness, findSendError, findRecipientError, findSentToast },
+    gmail: { countCompose, findNewMail, findCompose, findField, chipState, findRecipientPill, findCcToggle, readSubjectMirror, subjectRegistered, pressButton, detectReadiness, findSendError, findRecipientError, findSentToast },
   });
 })(typeof globalThis !== 'undefined' ? globalThis : window);

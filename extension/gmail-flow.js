@@ -33,6 +33,24 @@
     throw new OEAError('RECIPIENT_FAILED', `Gmail did not turn the address into a recipient in the ${name} field.`);
   }
 
+  /** Gmail's own state must hold the subject (its hidden copy updates); try a plain set, an editing command, then key events. */
+  async function enterSubject(doc, compose, subject, timeoutMs) {
+    const methods = [(i) => { OEA.setInputValue(i, subject); }, (i) => OEA.typeIntoInput(i, subject), (i) => OEA.typeIntoInputByKeys(i, subject)];
+    for (const method of methods) {
+      const live = G.findCompose(doc);
+      const input = live && live.subject;
+      if (!input) throw new OEAError('SUBJECT_FAILED', 'The Subject field disappeared.');
+      method(input);
+      try {
+        await OEA.waitFor(() => input.value === subject && G.subjectRegistered(compose, subject), { timeoutMs: Math.min(timeoutMs, 2500), description: 'Gmail to register the subject', doc });
+        return;
+      } catch (e) {
+        if (e.code !== 'TIMEOUT') throw e;
+      }
+    }
+    throw new OEAError('SUBJECT_FAILED', 'Gmail did not register the subject (its own copy of the subject stayed different). Nothing was sent.');
+  }
+
   function validateComposed(doc, job, compose, confirmed) {
     const problems = [];
     const cc = (job.cc || []).map((a) => a.trim());
@@ -59,6 +77,7 @@
       if (ccField && G.chipState(compose, ccField, []).count) problems.push('The Cc field has recipients that should not be there.');
     }
     if ((compose.subject.value || '') !== job.subject) problems.push('Subject does not match.');
+    if (!G.subjectRegistered(compose, job.subject)) problems.push('Gmail did not register the subject.');
     if (!OEA.squash(OEA.extractText(compose.body)).includes(OEA.squash(job.body))) problems.push('Body does not match.');
     else if (!OEA.bodyMatchesLines(compose.body, job.body)) problems.push('Body line breaks do not match.');
     if (compose.send.getAttribute('aria-disabled') === 'true') problems.push('The Send button is disabled.');
@@ -123,8 +142,8 @@
       }
       const refresh = () => { const live = G.findCompose(doc); if (live && live.root === compose.root) Object.assign(compose, live); };
       refresh();
-      OEA.setInputValue(compose.subject, job.subject);
-      if (compose.subject.value !== job.subject) throw new OEAError('SUBJECT_FAILED', 'Could not set the subject.');
+      await enterSubject(doc, compose, job.subject, t.recipient);
+      refresh();
       OEA.setEditableText(compose.body, job.body);
       if (!OEA.squash(OEA.extractText(compose.body)).includes(OEA.squash(job.body))) throw new OEAError('BODY_FAILED', 'Could not populate the message body.');
       if (!OEA.bodyMatchesLines(compose.body, job.body)) {

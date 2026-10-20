@@ -10,10 +10,11 @@ export const SCRIPTS = ['outlook-dom.js', 'outlook-flow.js', 'gmail-dom.js', 'gm
  * opts.sendMode: 'close' | 'toast' (stays open, notice) | 'never' | 'error'
  * opts.enterResolves: false => Enter does nothing, only a trailing "," resolves
  * opts.resolve: false => nothing ever resolves; opts.suggest: true => Enter also adds an unrelated chip
+ * opts.subjectMirror: 'normal' | 'never' (Gmail's hidden copy of the subject never updates) | 'keys' (updates only from key events);
  * opts.noCcLink: omit the Cc link; opts.url; opts.pre: 'compose'
  */
 export async function createGmail(opts = {}) {
-  const { sendMode = 'close', enterResolves = true, resolve = true, suggest = false, noCcLink = false, pre = null, url = 'https://mail.google.com/mail/u/0/#inbox' } = opts;
+  const { sendMode = 'close', enterResolves = true, resolve = true, suggest = false, noCcLink = false, subjectMirror = 'normal', pre = null, url = 'https://mail.google.com/mail/u/0/#inbox' } = opts;
   const dom = new JSDOM('<!doctype html><body><div role="button" gh="cm">Compose</div><div id="app"></div><div id="toasts"></div></body>', { url, runScripts: 'outside-only', pretendToBeVisual: true });
   const { window } = dom;
   const doc = window.document;
@@ -61,7 +62,15 @@ export async function createGmail(opts = {}) {
     if (st.ccOpen) rootEl.append(row('Cc'));
     const subject = el('input', { name: 'subjectbox', 'aria-label': 'Subject', placeholder: 'Subject' });
     subject.value = st.subject;
-    subject.addEventListener('input', () => { st.subject = subject.value; });
+    const mirror = el('input', { type: 'hidden', name: 'subject' });
+    mirror.value = st.mirror || '';
+    subject.addEventListener('keydown', () => { st.keyed = true; });
+    subject.addEventListener('keyup', () => { st.keyed = false; });
+    subject.addEventListener('input', () => {
+      st.subject = subject.value;
+      if (subjectMirror === 'normal' || (subjectMirror === 'keys' && st.keyed)) { st.mirror = subject.value; mirror.value = subject.value; }
+    });
+    rootEl.append(mirror);
     const body = el('div', { role: 'textbox', 'aria-label': 'Message Body', contenteditable: 'true' });
     body.innerHTML = st.bodyHtml || '<div><br></div>';
     body.addEventListener('input', () => { st.bodyHtml = body.innerHTML; });

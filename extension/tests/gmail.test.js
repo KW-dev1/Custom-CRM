@@ -95,3 +95,16 @@ test('an invalid job is rejected before touching the page', async () => {
   assert.equal(r.code, 'INVALID_JOB');
   assert.equal(g.c.composeClicks, 0);
 });
+test('Gmail\'s own copy of the subject never updating blocks the send (no "(No subject)" email)', async () => {
+  const g = await createGmail({ subjectMirror: 'never' });
+  const r = await g.OEA.activeProvider.processJob(job(), ctxOf(g, { timeouts: { ready: 500, compose: 800, recipient: 600, verify: 800 } }));
+  assert.equal(r.outcome, 'failed');
+  assert.equal(r.code, 'SUBJECT_FAILED');
+  assert.equal(g.c.sendClicks, 0);
+});
+test('a subject that only registers from key events is entered that way', async () => {
+  const g = await createGmail({ subjectMirror: 'keys' });
+  const r = await g.OEA.activeProvider.processJob(job(), ctxOf(g, { timeouts: { ready: 500, compose: 800, recipient: 600, verify: 800 } }));
+  assert.equal(r.outcome, 'sent', r.message);
+  assert.equal(g.st.mirror, 'Hello there');
+});

@@ -56,7 +56,7 @@
    * editing command first, then real per-character key events, and give each a moment to register.
    */
   async function enterSubject(doc, compose, subject, timeoutMs) {
-    const methods = [(i) => Y.typeIntoInput(i, subject), (i) => Y.typeIntoInputByKeys(i, subject)];
+    const methods = [(i) => OEA.typeIntoInput(i, subject), (i) => OEA.typeIntoInputByKeys(i, subject)];
     for (const method of methods) {
       const input = Y.findCompose(doc) && Y.findCompose(doc).subject;
       if (!input) throw new OEAError('SUBJECT_FAILED', 'The Subject field disappeared.');
