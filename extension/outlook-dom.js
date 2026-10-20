@@ -250,6 +250,38 @@
     fireInput(el, text, 'insertText');
     return 'dom';
   }
+  /**
+   * Type into an input the way a user does (a real editing command, so the page's own state sees it), falling
+   * back to the framework-safe value setter. Ends with change + blur so the value is committed.
+   */
+  function typeIntoInput(input, value) {
+    const doc = input.ownerDocument;
+    input.focus();
+    try { input.select(); } catch { /* not selectable */ }
+    let used = false;
+    try { used = typeof doc.execCommand === 'function' && doc.execCommand('insertText', false, value) === true; } catch { used = false; }
+    if (!used || input.value !== value) OEA.setInputValue(input, value);
+    input.dispatchEvent(new root.Event('change', { bubbles: true }));
+    input.blur();
+  }
+  /** Type character by character with real key events (keydown, input, keyup), as a last resort for pages that ignore bulk edits. */
+  function typeIntoInputByKeys(input, value) {
+    const win = input.ownerDocument.defaultView;
+    input.focus();
+    OEA.setInputValue(input, '');
+    let acc = '';
+    for (const ch of value) {
+      const init = { key: ch, bubbles: true, cancelable: true };
+      input.dispatchEvent(new win.KeyboardEvent('keydown', init));
+      input.dispatchEvent(new win.KeyboardEvent('keypress', init));
+      acc += ch;
+      Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value').set.call(input, acc);
+      input.dispatchEvent(new (win.InputEvent || win.Event)('input', { bubbles: true, inputType: 'insertText', data: ch }));
+      input.dispatchEvent(new win.KeyboardEvent('keyup', init));
+    }
+    input.dispatchEvent(new win.Event('change', { bubbles: true }));
+    input.blur();
+  }
   function pressKey(el, key, keyCode) {
     const init = { key, code: key, keyCode, which: keyCode, bubbles: true, cancelable: true };
     el.dispatchEvent(new root.KeyboardEvent('keydown', init));
@@ -391,7 +423,7 @@
 
   Object.assign(OEA, {
     MAIL_PREFIX, OEAError, SELECTORS, isVisible, lowestCommonAncestor, findNewMail, findSubject, findCc, findCcToggle, countCompose, findCompose,
-    detectReadiness, waitFor, extractText, squash, setInputValue, setEditableText, bodyMatchesLines, appendEditableText, pressKey, findRecipientPill,
+    detectReadiness, waitFor, extractText, squash, setInputValue, setEditableText, bodyMatchesLines, appendEditableText, typeIntoInput, typeIntoInputByKeys, pressKey, findRecipientPill,
     findSendError, findRecipientError, findSentToast,
     findFolder, findSelectedFolder, isFolderSelected, readMessageRows, describeMessageList, parseRowTime, matchSentRow, diagnoseSentRows,
   });

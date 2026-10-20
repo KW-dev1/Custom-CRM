@@ -66,7 +66,7 @@ It does **not** use Microsoft Graph, SMTP or any mail service. It automates the 
 | A **personal Outlook.com account** | Signed in at `https://outlook.live.com/mail/`, **English** interface. |
 | Your contacts as an **.xlsx** file | Layout described in Part 4. |
 
-Not supported: Microsoft 365 / work accounts on other domains, non-English Outlook, desktop Outlook. **Yahoo Mail** (`mail.yahoo.com`, English, current layout) is supported. It was built from captures of one real account, so first test with a row addressed to yourself. Yahoo only registers typing while its window has keyboard focus: the extension brings the Yahoo tab to the front before each send, so keep the popup closed and don't switch windows while it sends (otherwise the job fails safely with `PAGE_NOT_FOCUSED`). Yahoo does not use the "Confirm each send in Sent Items" option; a send counts as done when the compose window closes or Yahoo shows "Your message has been sent.".
+Not supported: Microsoft 365 / work accounts on other domains, non-English Outlook, desktop Outlook. **Gmail** (`mail.google.com`, English) is supported too, built from captures of one real account: first test with a row addressed to yourself. Like Yahoo, the extension brings the Gmail tab to the front before each send and ignores the "Confirm in Sent Items" option there. **Yahoo Mail** (`mail.yahoo.com`, English, current layout) is supported. It was built from captures of one real account, so first test with a row addressed to yourself. Yahoo only registers typing while its window has keyboard focus: the extension brings the Yahoo tab to the front before each send, so keep the popup closed and don't switch windows while it sends (otherwise the job fails safely with `PAGE_NOT_FOCUSED`). Yahoo does not use the "Confirm each send in Sent Items" option; a send counts as done when the compose window closes or Yahoo shows "Your message has been sent.".
 
 ## 3. Install the code
 
@@ -247,7 +247,7 @@ Open the extension popup and fill in **Settings**:
 
 | Field | What to enter |
 |---|---|
-| **Mail provider** | `Outlook Web` (default) or `Yahoo Mail`. Each Chrome profile uses one provider and one account. For Yahoo Mail, open `mail.yahoo.com` signed in to the account and keep the tab open; the "Confirm in Sent Items" tick has no effect there. |
+| **Mail provider** | `Outlook Web` (default), `Yahoo Mail` or `Gmail`. Each Chrome profile uses one provider and one account. For Yahoo Mail, open `mail.yahoo.com` signed in to the account and keep the tab open; the "Confirm in Sent Items" tick has no effect there. |
 | **Backend API base URL** | `http://localhost:3000` (backend on the same computer). A remote backend must use `https://`. |
 | **Profile name** | A short label for this Chrome profile / Outlook account, e.g. `outlook-A`. Use a **different** name in every profile. **Labels only, no email addresses.** Optional with a single account. |
 | **API key / token** | Exactly the `API_KEYS` value from `backend/.env`. |
